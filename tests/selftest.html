@@ -110,10 +110,16 @@ function run(w){
     ok('首页渲染：徽标有文字', !!badge && badge !== '无记录', badge);
     ok('首页渲染：今日汇总有导尿', today.indexOf('导尿') >= 0);
     ok('列表渲染：可点击编辑行', doc.getElementById('list').innerHTML.indexOf('data-edit=') >= 0);
-
+    ok('底部悬浮主按钮存在', !!doc.querySelector('.dock'));
+    ok('顶部按钮行已移除', !doc.querySelector('.main-row'));
     ok('副标题给出预计时间', doc.getElementById('lastInfo').textContent.indexOf('预计') > 0,
        doc.getElementById('lastInfo').textContent);
 
+    /* 弹层打开时，提示条必须避开弹层按钮 */
+    D.openSheet('c');
+    var toastTop = w.getComputedStyle(doc.getElementById('toast')).top;
+    ok('弹层打开时提示条移到顶部', parseFloat(toastTop) >= 0, toastTop);
+    D.closeSheet();
   }catch(e){
     ok('首页渲染不抛异常', false, e.message);
   }

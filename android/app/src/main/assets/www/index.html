@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#eef1f5">
+<meta name="theme-color" content="#eef1f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -18,7 +19,7 @@ html,body{margin:0;padding:0}
 body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Roboto,sans-serif;
   background:#eef1f5;color:#0f172a;font-size:16px;-webkit-text-size-adjust:100%;
-  padding:12px 12px calc(28px + env(safe-area-inset-bottom));
+  padding:12px 12px calc(104px + env(safe-area-inset-bottom));
   max-width:520px;margin:0 auto;
   user-select:none;overflow-x:hidden;
 }
@@ -34,26 +35,31 @@ body{
 .badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:13px;font-weight:700;background:#eef2f7;color:#475569;white-space:nowrap}
 .badge.ok{background:#dcfce7;color:#15803d}
 .badge.warn{background:#fef3c7;color:#b45309}
-.badge.late{background:#fee2e2;color:#b91c1c;animation:blink 1.6s ease-in-out infinite}
-@keyframes blink{50%{opacity:.45}}
+.badge.late{background:#fee2e2;color:#b91c1c}
 .stat-sub{font-size:13.5px;color:#64748b;margin-top:6px;font-variant-numeric:tabular-nums}
 .stat-div{height:1px;background:#f1f5f9;margin:12px 0 10px}
 .today{font-size:14px;color:#334155;line-height:1.75;font-variant-numeric:tabular-nums}
 .today b{font-weight:800;font-size:15.5px;color:#0f172a}
 .today .seg{white-space:nowrap}
-.tsum{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:2px;font-size:14px;color:#334155;
+.tsum{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:2px;font-size:13.5px;color:#334155;
   font-variant-numeric:tabular-nums}
 .tsum .it{white-space:nowrap}
-.tsum .it b{font-size:15.5px;font-weight:800;color:#0f172a;margin:0 1px}
+.tsum .it b{font-size:14.5px;font-weight:800;color:#0f172a;margin:0 1px}
 .over{color:#dc2626;font-weight:700}
 
 /* ---------- 主按钮 ---------- */
-.main-row{display:grid;grid-template-columns:2.15fr 1fr;gap:8px;margin-bottom:12px}
+/* 固定在底部（拇指区），滚动时常驻 */
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:15;
+  display:grid;grid-template-columns:2.15fr 1fr;gap:8px;
+  padding:10px 12px calc(12px + env(safe-area-inset-bottom));
+  max-width:520px;margin:0 auto;
+  background:linear-gradient(to bottom,rgba(238,241,245,0) 0%,#eef1f5 40%)}
+.dock .btn{padding:15px 8px}
 .btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;border:0;border-radius:16px;
   padding:14px 8px;font-size:19px;font-weight:800;
-  color:#fff;background:#2563eb;box-shadow:0 4px 14px rgba(37,99,235,.28);
+  color:#fff;background:#2563eb;box-shadow:0 2px 8px rgba(37,99,235,.20);
   font-family:inherit;letter-spacing:.5px}
-.btn:active{transform:translateY(1px);box-shadow:0 2px 8px rgba(37,99,235,.25)}
+.btn:active{transform:translateY(1px);box-shadow:0 1px 4px rgba(37,99,235,.18)}
 .btn-poo{background:#f1f5f9;color:#7c4a1e;box-shadow:none;font-size:15px;font-weight:800;
   flex-direction:column;gap:1px;line-height:1.15;letter-spacing:0;padding:10px 4px}
 .btn-poo:active{background:#e2e8f0;transform:translateY(1px);box-shadow:none}
@@ -73,7 +79,8 @@ body{
 .list-head .t{font-size:16px;font-weight:800}
 .link{border:0;background:transparent;color:#2563eb;font-size:14px;font-weight:700;padding:6px 4px;font-family:inherit}
 .dh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;
-  padding:14px 0 5px;font-size:12.5px;color:#64748b;font-weight:700;border-top:1px solid #f1f5f9}
+  padding:14px 0 5px;font-size:12.5px;color:#64748b;font-weight:700;border-top:1px solid #f1f5f9;
+  position:sticky;top:0;z-index:3;background:#fff;box-shadow:0 -8px 0 #fff}
 .dh:first-child{border-top:0;padding-top:8px}
 .dh .sum{font-weight:600;color:#94a3b8;font-variant-numeric:tabular-nums;text-align:right;margin-left:auto}
 .rec{display:flex;align-items:center;gap:9px;padding:11px 0;border-top:1px solid #f8fafc}
@@ -100,12 +107,13 @@ body{
 .col-w .col-head{background:#cffafe;color:#0e7490}
 .rec2{display:flex;align-items:center;gap:5px;padding:9px 8px;border-radius:8px;
   border-top:1px solid #f8fafc;min-width:0}
-.rec2 .rt{flex:none;font-size:13.5px;color:#64748b;font-variant-numeric:tabular-nums}
-.rec2 .rv{margin-left:auto;font-weight:800;font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.rec2 .u{font-size:10.5px;font-weight:700;color:#94a3b8;margin-left:1px}
-.rec2 .warnmark{display:inline-block;font-size:10px;font-weight:800;color:#dc2626;
+.rec2 .rt{flex:none;font-size:14.5px;color:#64748b;font-variant-numeric:tabular-nums}
+.rec2 .rv{margin-left:auto;font-weight:800;font-size:17px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rec2 .u{font-size:11.5px;font-weight:700;color:#94a3b8;margin-left:1px}
+.rec2 .warnmark{display:inline-block;font-size:10.5px;font-weight:800;color:#dc2626;
   background:#fee2e2;border-radius:4px;padding:1px 3px;margin-left:3px;vertical-align:1.5px}
-.rec2 .x{border:0;background:transparent;color:#d7dee8;font-size:19px;line-height:1;padding:1px 3px;font-family:inherit;flex:none}
+.rec2 .x{border:0;background:transparent;color:#d7dee8;font-size:19px;line-height:1;
+  padding:10px 6px;margin:-10px -2px -10px 0;font-family:inherit;flex:none}
 .rec2 .x:active{color:#ef4444}
 .rec2.over{background:#fef2f2}
 .rec2.over .rv{color:#dc2626}
@@ -117,7 +125,7 @@ body{
 .dh .sum.w{color:#0e7490}
 
 /* 间隔标记：距上次导尿 */
-.rec2 .gap{display:block;font-size:10.5px;font-weight:700;color:#94a3b8;
+.rec2 .gap{display:block;font-size:11.5px;font-weight:700;color:#94a3b8;
   font-variant-numeric:tabular-nums;line-height:1.25;margin-top:1px}
 .rec2 .gap.long{color:#f59e0b}
 
@@ -180,11 +188,15 @@ body{
 .jrow .chipbtn.on{background:#0e7490;color:#fff;box-shadow:0 2px 8px rgba(14,116,144,.3)}
 
 /* ---------- 提示条 ---------- */
-.toast{position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,16px);
+.toast{position:fixed;left:50%;bottom:calc(104px + env(safe-area-inset-bottom));transform:translate(-50%,16px);
   background:#0f172a;color:#fff;font-size:14.5px;font-weight:600;padding:12px 18px;border-radius:12px;
   opacity:0;pointer-events:none;transition:all .22s;z-index:40;max-width:88vw;text-align:center;line-height:1.4}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .toast.bad{background:#b91c1c}
+
+/* 弹层打开时，提示条挪到顶部，免得挡住弹层按钮 */
+.sheet.open ~ .toast{bottom:auto;top:calc(14px + env(safe-area-inset-top));transform:translate(-50%,-14px)}
+.sheet.open ~ .toast.show{transform:translate(-50%,0)}
 
 /* ---------- v1.1：撤销 / 夜间 / 编辑 ---------- */
 .toast.show.hasundo{pointer-events:auto}
@@ -200,6 +212,78 @@ body{
 .timerow input[type=date]{min-width:132px;padding:9px 8px}
 .sheet-actions.edit{grid-template-columns:1fr 1fr 1.25fr}
 .btn-danger{background:#fee2e2;color:#b91c1c}
+
+/* ---------- 深色模式（跟随系统） ---------- */
+@media (prefers-color-scheme: dark){
+  html,body{background:#0b1220}
+  body{color:#e6edf7}
+  .card{background:#141c2b;box-shadow:none}
+  .dock{background:linear-gradient(to bottom,rgba(11,18,32,0) 0%,#0b1220 40%)}
+
+  .stat-label,.stat-sub{color:#8b9bb0}
+  .big,.big.ok,.today b,.tsum .it b{color:#e6edf7}
+  .big.none{color:#64748b}
+  .big.warn{color:#fcd34d}
+  .big.late{color:#fca5a5}
+  .stat-div{background:#22303f}
+  .today,.tsum{color:#c3cddb}
+  .over{color:#fca5a5}
+
+  .badge{background:#1e293b;color:#c3cddb}
+  .badge.ok{background:#0f3d2a;color:#6ee7b7}
+  .badge.warn{background:#3d2f0f;color:#fcd34d}
+  .badge.late{background:#3f1414;color:#fca5a5}
+
+  .btn{box-shadow:0 2px 10px rgba(0,0,0,.45)}
+  .btn-poo{background:#1e293b;color:#d6b48c}
+  .btn-poo:active{background:#273449}
+  .water-label{color:#67e8f9}
+  .chipbtn{background:#0c2f3f;color:#7dd3fc}
+  .chipbtn:active{background:#134e5e}
+  .chipbtn.alt{background:#1e293b;color:#c3cddb}
+  .chipbtn.alt:active{background:#273449}
+
+  .link{color:#60a5fa}
+  .foot button{color:#64748b}
+  .empty,.col-empty{color:#475569}
+
+  .dh{background:#141c2b;color:#8b9bb0;border-top-color:#22303f;box-shadow:0 -8px 0 #141c2b}
+  .dh .sum{color:#64748b}
+  .rec2{border-top-color:#1b2534}
+  .rec2 .rt{color:#8b9bb0}
+  .rec2 .u{color:#64748b}
+  .rec2 .gap{color:#64748b}
+  .rec2 .x{color:#3a4759}
+  .rec2.over{background:#2a1416}
+  .rec2.over .rv{color:#fca5a5}
+  .rec2 .warnmark{background:#3f1414;color:#fca5a5}
+  .rec2.poo{background:#241d12}
+  .rec2 .poov{color:#e0b877}
+  .col-c .col-head{background:#1e1b4b;color:#c7d2fe}
+  .col-w .col-head{background:#083344;color:#a5f3fc}
+  .nightmark{background:#1e293b;color:#c3cddb}
+  .moremark{background:#1e293b;color:#94a3b8}
+  .rec2 .jt{background:#0c2f3f;color:#7dd3fc}
+  .rec2 .jt.s{background:#3d2f0f;color:#fcd34d}
+  .rec2 .jt.p{background:#0f3d2a;color:#6ee7b7}
+
+  .mask{background:rgba(0,0,0,.58)}
+  .sheet-box{background:#141c2b;box-shadow:0 -6px 30px rgba(0,0,0,.55)}
+  .sheet-title{color:#e6edf7}
+  .sheet-hint{color:#8b9bb0}
+  .timerow{color:#8b9bb0}
+  .timerow input{background:#0f1726;border-color:#22303f;color:#e6edf7}
+  .chips .chipbtn{background:#0c2f3f;color:#7dd3fc}
+  .jrow .chipbtn.on{background:#0e7490;color:#fff}
+  .pitem{color:#475569}
+  .pitem.sel{color:#e6edf7}
+  .pind{border-color:#22303f;background:rgba(59,130,246,.10)}
+  .punit{color:#64748b}
+  .btn-ghost{background:#1e293b;color:#c3cddb}
+  .btn-danger{background:#3f1414;color:#fca5a5}
+  .toast{background:#1e293b;color:#e6edf7}
+  .toast .undo{background:#334155;color:#fff}
+}
 </style>
 </head>
 <body>
@@ -213,11 +297,6 @@ body{
   <div class="stat-sub" id="lastInfo">还没有导尿记录</div>
   <div class="stat-div"></div>
   <div class="today" id="todayLine">今日还没有记录</div>
-</div>
-
-<div class="main-row">
-  <button class="btn" id="btnCath">＋ 记一次导尿</button>
-  <button class="btn btn-poo" id="btnPoo"><span class="em">💩</span>记排便</button>
 </div>
 
 <div class="water-row">
@@ -240,6 +319,11 @@ body{
   <button id="btnClear">清空全部数据</button>
 </div>
 <input type="file" id="fileIn" accept=".json,application/json" style="display:none">
+
+<div class="dock">
+  <button class="btn" id="btnCath">＋ 记一次导尿</button>
+  <button class="btn btn-poo" id="btnPoo"><span class="em">💩</span>记排便</button>
+</div>
 
 <div class="mask" id="mask"></div>
 <div class="sheet" id="sheet">

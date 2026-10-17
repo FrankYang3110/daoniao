@@ -8,6 +8,7 @@ import android.content.ContentValues;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -54,12 +55,17 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         Window w = getWindow();
+        boolean night = (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        int chrome = night ? 0xFF0B1220 : 0xFFEEF1F5;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            w.setStatusBarColor(0xFFEEF1F5);
-            w.setNavigationBarColor(0xFFEEF1F5);
+            w.setStatusBarColor(chrome);
+            w.setNavigationBarColor(chrome);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            // 深色背景用浅色图标，浅色背景用深色图标
+            int flag = night ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            w.getDecorView().setSystemUiVisibility(flag);
         }
 
         web = new WebView(this);
@@ -116,7 +122,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        web.setBackgroundColor(0xFFEEF1F5);
+        web.setBackgroundColor(night ? 0xFF0B1220 : 0xFFEEF1F5);
         web.addJavascriptInterface(new Bridge(), "AndroidBridge");
 
         web.loadUrl("file:///android_asset/www/index.html");
