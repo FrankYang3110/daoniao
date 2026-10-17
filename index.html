@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#eef1f5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="导尿记录">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>导尿记录</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Roboto,sans-serif;
+  background:#eef1f5;color:#0f172a;font-size:16px;-webkit-text-size-adjust:100%;
+  padding:12px 12px calc(28px + env(safe-area-inset-bottom));
+  max-width:520px;margin:0 auto;
+  user-select:none;overflow-x:hidden;
+}
+.card{background:#fff;border-radius:18px;padding:16px 16px 14px;box-shadow:0 1px 3px rgba(15,23,42,.07);margin-bottom:12px}
+
+/* ---------- 状态卡 ---------- */
+.stat-label{font-size:13px;color:#64748b;font-weight:600;letter-spacing:.3px}
+.stat-main{display:flex;align-items:center;gap:10px;margin-top:2px;flex-wrap:wrap}
+.big{font-size:clamp(32px,10.5vw,44px);font-weight:800;line-height:1.15;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:#0f172a}
+.badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:13px;font-weight:700;background:#eef2f7;color:#475569;white-space:nowrap}
+.badge.ok{background:#dcfce7;color:#15803d}
+.badge.warn{background:#fef3c7;color:#b45309}
+.badge.late{background:#fee2e2;color:#b91c1c;animation:blink 1.6s ease-in-out infinite}
+@keyframes blink{50%{opacity:.45}}
+.stat-sub{font-size:13.5px;color:#64748b;margin-top:6px;font-variant-numeric:tabular-nums}
+.stat-div{height:1px;background:#f1f5f9;margin:12px 0 10px}
+.today{font-size:14px;color:#334155;line-height:1.7;font-variant-numeric:tabular-nums}
+.today b{font-weight:800;font-size:15.5px;color:#0f172a}
+.over{color:#dc2626;font-weight:700}
+
+/* ---------- 主按钮 ---------- */
+.btn{display:block;width:100%;border:0;border-radius:16px;padding:19px;font-size:20px;font-weight:800;
+  color:#fff;background:#2563eb;box-shadow:0 4px 14px rgba(37,99,235,.28);margin-bottom:12px;
+  font-family:inherit;letter-spacing:.5px}
+.btn:active{transform:translateY(1px);box-shadow:0 2px 8px rgba(37,99,235,.25)}
+
+/* ---------- 喝水行 ---------- */
+.water-row{display:grid;grid-template-columns:auto repeat(4,minmax(0,1fr));gap:6px;align-items:center;margin-bottom:14px}
+.water-label{font-size:15px;font-weight:700;color:#0e7490;white-space:nowrap;padding-right:2px}
+.chipbtn{border:0;border-radius:12px;padding:14px 0;font-size:15px;font-weight:700;min-width:0;overflow:hidden;
+  background:#e0f2fe;color:#075985;font-family:inherit;font-variant-numeric:tabular-nums}
+.chipbtn:active{background:#bae6fd}
+.chipbtn.alt{background:#f1f5f9;color:#475569}
+.chipbtn.alt:active{background:#e2e8f0}
+
+/* ---------- 列表 ---------- */
+.list-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.list-head .t{font-size:16px;font-weight:800}
+.link{border:0;background:transparent;color:#2563eb;font-size:14px;font-weight:700;padding:6px 4px;font-family:inherit}
+.dh{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  padding:14px 0 5px;font-size:12.5px;color:#64748b;font-weight:700;border-top:1px solid #f1f5f9}
+.dh:first-child{border-top:0;padding-top:8px}
+.dh .sum{font-weight:600;color:#94a3b8;font-variant-numeric:tabular-nums;text-align:right}
+.rec{display:flex;align-items:center;gap:9px;padding:11px 0;border-top:1px solid #f8fafc}
+.rec .rt{width:52px;flex:none;font-size:15px;color:#64748b;font-variant-numeric:tabular-nums}
+.rec .tag{flex:none;font-size:12px;font-weight:700;padding:3px 8px;border-radius:6px}
+.tag.c{background:#e0e7ff;color:#3730a3}
+.tag.w{background:#cffafe;color:#0e7490}
+.rec .rv{margin-left:auto;font-weight:800;font-size:17px;font-variant-numeric:tabular-nums}
+.rv .u{font-size:11px;font-weight:700;color:#94a3b8;margin-left:2px}
+.rec .x{border:0;background:transparent;color:#cbd5e1;font-size:22px;line-height:1;padding:2px 8px;font-family:inherit}
+.rec .x:active{color:#ef4444}
+.warnmark{color:#dc2626;font-size:11.5px;font-weight:800;margin-left:6px;vertical-align:1px}
+.empty{color:#94a3b8;font-size:14px;text-align:center;padding:22px 0}
+.foot{display:flex;justify-content:center;gap:18px;padding:6px 0 2px}
+.foot button{border:0;background:transparent;color:#94a3b8;font-size:12.5px;padding:8px;font-family:inherit}
+
+/* ---------- 底部弹层 ---------- */
+.mask{position:fixed;inset:0;background:rgba(15,23,42,.32);opacity:0;pointer-events:none;transition:opacity .18s;z-index:20}
+.mask.open{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;transform:translateY(102%);transition:transform .2s ease;
+  padding:0 8px calc(8px + env(safe-area-inset-bottom));pointer-events:none}
+.sheet.open{transform:translateY(0);pointer-events:auto}
+.sheet-box{background:#fff;border-radius:22px;padding:18px 16px calc(16px + env(safe-area-inset-bottom));
+  max-width:504px;margin:0 auto;box-shadow:0 -6px 30px rgba(15,23,42,.16)}
+.sheet-title{font-size:18px;font-weight:800;text-align:center}
+.sheet-hint{font-size:13px;color:#64748b;text-align:center;margin-top:5px;min-height:18px;font-variant-numeric:tabular-nums}
+.amt{display:flex;align-items:baseline;justify-content:center;gap:6px;margin:14px 0 12px}
+.amt input{width:62%;border:0;border-bottom:2.5px solid #e2e8f0;background:transparent;text-align:center;
+  font-size:40px;font-weight:800;color:#0f172a;font-family:inherit;padding:4px 0;outline:none;
+  font-variant-numeric:tabular-nums;border-radius:0;
+  -webkit-appearance:none;appearance:textfield;-moz-appearance:textfield}
+.amt input::-webkit-outer-spin-button,
+.amt input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.amt input:focus{border-bottom-color:#2563eb}
+.amt .unit{font-size:17px;font-weight:700;color:#94a3b8}
+.chips{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:12px}
+.chips .chipbtn{font-size:16px}
+.timerow{display:flex;align-items:center;justify-content:center;gap:10px;font-size:14px;
+  color:#64748b;font-weight:600;margin-bottom:14px}
+.timerow input{border:1px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:16px;
+  font-family:inherit;color:#0f172a;background:#f8fafc;font-variant-numeric:tabular-nums}
+.sheet-actions{display:grid;grid-template-columns:1fr 1.6fr;gap:10px}
+.sheet-actions button{border:0;border-radius:14px;padding:16px;font-size:17px;font-weight:800;font-family:inherit}
+.btn-ghost{background:#f1f5f9;color:#475569}
+.btn-main{background:#2563eb;color:#fff}
+.btn-main:active{background:#1d4ed8}
+
+/* ---------- 提示条 ---------- */
+.toast{position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,16px);
+  background:#0f172a;color:#fff;font-size:14.5px;font-weight:600;padding:12px 18px;border-radius:12px;
+  opacity:0;pointer-events:none;transition:all .22s;z-index:40;max-width:88vw;text-align:center;line-height:1.4}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.bad{background:#b91c1c}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="stat-label">距上次导尿</div>
+  <div class="stat-main">
+    <div class="big" id="elapsed">—</div>
+    <div class="badge" id="badge">无记录</div>
+  </div>
+  <div class="stat-sub" id="lastInfo">还没有导尿记录</div>
+  <div class="stat-div"></div>
+  <div class="today" id="todayLine">今日还没有记录</div>
+</div>
+
+<button class="btn" id="btnCath">＋　记一次导尿</button>
+
+<div class="water-row">
+  <span class="water-label">💧 喝水</span>
+  <button class="chipbtn" data-w="100">+100</button>
+  <button class="chipbtn" data-w="150">+150</button>
+  <button class="chipbtn" data-w="200">+200</button>
+  <button class="chipbtn alt" data-w="0">其他</button>
+</div>
+
+<div class="card">
+  <div class="list-head"><span class="t">记录</span><button class="link" id="btnCsv">导出 CSV</button></div>
+  <div id="list"></div>
+</div>
+
+<div class="foot">
+  <button id="btnClear">清空全部数据</button>
+</div>
+
+<div class="mask" id="mask"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-box">
+    <div class="sheet-title" id="sheetTitle">记录</div>
+    <div class="sheet-hint" id="sheetHint"></div>
+    <div class="amt">
+      <input id="amt" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="0" autocomplete="off">
+      <span class="unit">ml</span>
+    </div>
+    <div class="chips" id="chips"></div>
+    <label class="timerow">时间 <input id="tm" type="time"></label>
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="sheetCancel">取消</button>
+      <button class="btn-main" id="sheetOk">保　存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ====== 参数：要改只改这里 ====== */
+var CFG = {
+  MAX_ML   : 180,   // 单次导尿上限，超过报警
+  DAY_H    : 3,     // 白天间隔提醒（小时）
+  NIGHT_H  : 8,     // 夜间阈值（只显示，不报警）
+  NIGHT_S  : 22,    // 夜间开始 22:00
+  NIGHT_E  : 6,     // 夜间结束 06:00
+  KEY      : 'cathlog_v1'
+};
+
+/* ====== 存储（无 localStorage 时降级为内存） ====== */
+var data = [];
+function load(){
+  try{ var s = localStorage.getItem(CFG.KEY); if(s){ var a = JSON.parse(s); if(Array.isArray(a)) return a; } }catch(e){}
+  return [];
+}
+function save(){
+  try{ localStorage.setItem(CFG.KEY, JSON.stringify(data)); }catch(e){}
+}
+data = load();
+data.sort(function(a,b){ return a.t - b.t; });
+
+/* ====== 工具 ====== */
+function p2(n){ return n<10 ? '0'+n : ''+n; }
+function dayKey(ts){ var d=new Date(ts); return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()); }
+function hm(ts){ var d=new Date(ts); return p2(d.getHours())+':'+p2(d.getMinutes()); }
+function isNight(ts){ var h=new Date(ts).getHours(); return (h>=CFG.NIGHT_S || h<CFG.NIGHT_E); }
+function dayLabel(ts){
+  var d=new Date(ts), now=new Date(), w=['周日','周一','周二','周三','周四','周五','周六'];
+  var s = (d.getMonth()+1)+'月'+d.getDate()+'日 '+w[d.getDay()];
+  if(dayKey(ts)===dayKey(now.getTime())) s = '今天 · '+s;
+  else{
+    var y=new Date(now.getTime()-86400000);
+    if(dayKey(ts)===dayKey(y.getTime())) s = '昨天 · '+s;
+  }
+  return s;
+}
+function fmtDur(ms){
+  var m = Math.floor(ms/60000);
+  if(m < 1) return '刚刚';
+  var h = Math.floor(m/60), mm = m%60;
+  if(h === 0) return mm+'分';
+  return h+'小时'+mm+'分';
+}
+
+/* ====== 提示条 ====== */
+var toastTimer = null;
+function toast(msg, bad){
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (bad ? ' bad' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ el.className = 'toast'; }, 2600);
+}
+
+/* ====== 状态区 ====== */
+function lastCath(){
+  for(var i=data.length-1;i>=0;i--){ if(data[i].k==='c') return data[i]; }
+  return null;
+}
+
+function renderStatus(){
+  var now = Date.now();
+  var lc = lastCath();
+  var elE = document.getElementById('elapsed');
+  var elB = document.getElementById('badge');
+  var elL = document.getElementById('lastInfo');
+
+  if(!lc){
+    elE.textContent = '—';
+    elE.style.color = '#94a3b8';
+    elB.className = 'badge';
+    elB.textContent = '无记录';
+    elL.textContent = '还没有导尿记录，点下面的蓝色按钮开始';
+  }else{
+    var ms = now - lc.t;
+    elE.textContent = fmtDur(ms);
+
+    var cls, txt, col;
+    if(isNight(now)){
+      cls=''; txt='夜间'; col='#475569';
+    }else{
+      var h = ms/3600000;
+      if(h < CFG.DAY_H){ cls='ok'; txt='正常'; col='#0f172a'; }
+      else if(h < CFG.DAY_H+0.5){ cls='warn'; txt='该导尿了'; col='#b45309'; }
+      else { cls='late'; txt='已超时'; col='#b91c1c'; }
+    }
+    elE.style.color = col;
+    elB.className = 'badge' + (cls ? ' '+cls : '');
+    elB.textContent = txt;
+
+    elL.textContent = '上次 ' + dayLabel(lc.t).replace(' · ',' ') + ' ' + hm(lc.t) + ' · ' + lc.v + ' ml';
+  }
+
+  /* 今日汇总 */
+  var tk = dayKey(now), cN=0, cSum=0, wSum=0, over=0;
+  for(var i=0;i<data.length;i++){
+    var e = data[i];
+    if(dayKey(e.t) !== tk) continue;
+    if(e.k === 'c'){ cN++; cSum += e.v; if(e.v > CFG.MAX_ML) over++; }
+    else { wSum += e.v; }
+  }
+  var line;
+  if(cN === 0 && wSum === 0){ line = '今日还没有记录'; }
+  else{
+    line = '今日　导尿 <b>'+cN+'</b> 次 · <b>'+cSum+'</b> ml　│　饮水 <b>'+wSum+'</b> ml';
+    if(over > 0) line += '<br><span class="over">⚠ 有 '+over+' 次超过 '+CFG.MAX_ML+' ml</span>';
+  }
+  document.getElementById('todayLine').innerHTML = line;
+}
+
+/* ====== 记录列表 ====== */
+function renderList(){
+  var box = document.getElementById('list');
+  if(data.length === 0){
+    box.innerHTML = '<div class="empty">还没有记录</div>';
+    return;
+  }
+  var slice = data.slice(-400);
+  var groups = [], cur = null;
+  for(var i=slice.length-1;i>=0;i--){
+    var e = slice[i];
+    var k = dayKey(e.t);
+    if(!cur || cur.k !== k){ cur = {k:k, items:[]}; groups.push(cur); }
+    cur.items.push(e);
+  }
+
+  var html = '';
+  groups.forEach(function(g){
+    var cN=0,cSum=0,wSum=0;
+    g.items.forEach(function(e){
+      if(e.k==='c'){ cN++; cSum+=e.v; } else { wSum+=e.v; }
+    });
+    html += '<div class="dh"><span>'+dayLabel(g.items[0].t)+'</span>'+
+            '<span class="sum">导尿'+cN+'次 '+cSum+'ml · 饮水'+wSum+'ml</span></div>';
+    g.items.forEach(function(e){
+      var isC = e.k === 'c';
+      html += '<div class="rec">'+
+        '<span class="rt">'+hm(e.t)+'</span>'+
+        '<span class="tag '+(isC?'c':'w')+'">'+(isC?'导尿':'喝水')+'</span>'+
+        '<span class="rv">'+e.v+'<span class="u">ml</span>'+
+          (isC && e.v > CFG.MAX_ML ? '<span class="warnmark">超'+CFG.MAX_ML+'</span>' : '')+
+        '</span>'+
+        '<button class="x" data-del="'+e.id+'">×</button>'+
+      '</div>';
+    });
+  });
+  box.innerHTML = html;
+}
+
+function renderAll(){ renderStatus(); renderList(); }
+
+/* ====== 新增 / 删除 ====== */
+function addEntry(kind, ml, ts){
+  data.push({
+    id: String(ts) + Math.random().toString(36).slice(2,7),
+    t: ts,
+    k: kind,
+    v: ml
+  });
+  data.sort(function(a,b){ return a.t - b.t; });
+  save();
+  renderAll();
+}
+
+function delEntry(id){
+  if(!confirm('删除这条记录？')) return;
+  data = data.filter(function(e){ return e.id !== id; });
+  save();
+  renderAll();
+}
+
+/* ====== 底部弹层 ====== */
+var sheetKind = null;
+function nowTimeValue(){
+  var d = new Date();
+  return p2(d.getHours())+':'+p2(d.getMinutes());
+}
+function openSheet(kind){
+  sheetKind = kind;
+  var isC = kind === 'c';
+  document.getElementById('sheetTitle').textContent = isC ? '记录导尿' : '记录饮水';
+
+  var hint = '';
+  if(isC){
+    var lc = lastCath();
+    hint = lc ? '距上次导尿 ' + fmtDur(Date.now()-lc.t) : '这是第一条导尿记录';
+  }else{
+    var tk = dayKey(Date.now()), s = 0;
+    data.forEach(function(e){ if(e.k==='w' && dayKey(e.t)===tk) s += e.v; });
+    hint = '今日已喝 ' + s + ' ml';
+  }
+  document.getElementById('sheetHint').textContent = hint;
+
+  var presets = isC ? [100,130,160,180] : [100,150,200,300];
+  var chips = document.getElementById('chips');
+  chips.innerHTML = '';
+  presets.forEach(function(v){
+    var b = document.createElement('button');
+    b.className = 'chipbtn';
+    b.type = 'button';
+    b.textContent = v;
+    b.onclick = function(){
+      document.getElementById('amt').value = v;
+      document.getElementById('amt').focus();
+    };
+    chips.appendChild(b);
+  });
+
+  var input = document.getElementById('amt');
+  input.value = '';
+  document.getElementById('tm').value = nowTimeValue();
+
+  document.getElementById('mask').className = 'mask open';
+  document.getElementById('sheet').className = 'sheet open';
+  setTimeout(function(){ try{ input.focus(); }catch(e){} }, 220);
+}
+
+function closeSheet(){
+  document.getElementById('mask').className = 'mask';
+  document.getElementById('sheet').className = 'sheet';
+  sheetKind = null;
+  try{ document.activeElement.blur(); }catch(e){}
+}
+
+function confirmSheet(){
+  if(!sheetKind) return;
+  var v = parseInt(document.getElementById('amt').value, 10);
+  if(!v || v <= 0 || v > 3000){
+    toast('请输入正确的数值');
+    document.getElementById('amt').focus();
+    return;
+  }
+  /* 时间：默认现在；若填的时间晚于现在 5 分钟以上，视为昨天 */
+  var now = new Date();
+  var parts = (document.getElementById('tm').value || '').split(':');
+  var ts = now.getTime();
+  if(parts.length === 2){
+    var d = new Date(now.getTime());
+    d.setHours(parseInt(parts[0],10), parseInt(parts[1],10), 0, 0);
+    if(d.getTime() > now.getTime() + 5*60000){ d.setDate(d.getDate()-1); }
+    ts = d.getTime();
+  }
+
+  var kind = sheetKind;
+  addEntry(kind, v, ts);
+  closeSheet();
+
+  if(kind === 'c' && v > CFG.MAX_ML){
+    toast('⚠ 本次 ' + v + ' ml，已超过 ' + CFG.MAX_ML + ' ml 上限', true);
+  }else{
+    toast(kind === 'c' ? '已记录导尿 ' + v + ' ml' : '已记录饮水 ' + v + ' ml');
+  }
+}
+
+/* ====== 导出 CSV ====== */
+function exportCsv(){
+  if(data.length === 0){ toast('还没有数据可以导出'); return; }
+  var rows = [['日期','时间','事件','量(ml)']];
+  data.forEach(function(e){
+    rows.push([ dayKey(e.t), hm(e.t), e.k==='c' ? '导尿' : '饮水', e.v ]);
+  });
+  var csv = '\ufeff' + rows.map(function(r){ return r.join(','); }).join('\r\n');
+  try{
+    var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '导尿记录_' + dayKey(Date.now()) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
+    toast('已导出，请到「下载」里找');
+  }catch(e){
+    toast('导出失败，请用 Chrome 打开本页', true);
+  }
+}
+
+/* ====== 事件绑定 ====== */
+document.getElementById('btnCath').onclick = function(){ openSheet('c'); };
+
+Array.prototype.forEach.call(document.querySelectorAll('[data-w]'), function(b){
+  b.onclick = function(){
+    var v = parseInt(b.getAttribute('data-w'), 10);
+    if(v === 0){ openSheet('w'); return; }
+    addEntry('w', v, Date.now());
+    toast('已记录饮水 ' + v + ' ml');
+  };
+});
+
+document.getElementById('list').onclick = function(ev){
+  var t = ev.target;
+  if(t && t.getAttribute && t.getAttribute('data-del')){
+    delEntry(t.getAttribute('data-del'));
+  }
+};
+
+document.getElementById('btnCsv').onclick = exportCsv;
+
+document.getElementById('btnClear').onclick = function(){
+  if(data.length === 0){ toast('没有数据'); return; }
+  if(!confirm('确定要清空全部 ' + data.length + ' 条记录吗？此操作无法撤销。\n建议先点「导出 CSV」备份。')) return;
+  if(!confirm('再次确认：真的要全部删除吗？')) return;
+  data = [];
+  save();
+  renderAll();
+  toast('已清空');
+};
+
+document.getElementById('mask').onclick = closeSheet;
+document.getElementById('sheetCancel').onclick = closeSheet;
+document.getElementById('sheetOk').onclick = confirmSheet;
+
+document.getElementById('amt').addEventListener('keydown', function(e){
+  if(e.key === 'Enter'){ e.preventDefault(); confirmSheet(); }
+});
+
+/* ====== 启动 ====== */
+renderAll();
+setInterval(renderStatus, 20000);
+document.addEventListener('visibilitychange', function(){
+  if(!document.hidden) renderStatus();
+});
+
+/* ====== PWA：离线缓存（仅 http/https 生效） ====== */
+if('serviceWorker' in navigator && location.protocol.indexOf('http') === 0){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+
+})();
+</script>
+</body>
+</html>
