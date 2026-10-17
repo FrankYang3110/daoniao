@@ -58,10 +58,10 @@ body{
 .list-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
 .list-head .t{font-size:16px;font-weight:800}
 .link{border:0;background:transparent;color:#2563eb;font-size:14px;font-weight:700;padding:6px 4px;font-family:inherit}
-.dh{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+.dh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;
   padding:14px 0 5px;font-size:12.5px;color:#64748b;font-weight:700;border-top:1px solid #f1f5f9}
 .dh:first-child{border-top:0;padding-top:8px}
-.dh .sum{font-weight:600;color:#94a3b8;font-variant-numeric:tabular-nums;text-align:right}
+.dh .sum{font-weight:600;color:#94a3b8;font-variant-numeric:tabular-nums;text-align:right;margin-left:auto}
 .rec{display:flex;align-items:center;gap:9px;padding:11px 0;border-top:1px solid #f8fafc}
 .rec .rt{width:52px;flex:none;font-size:15px;color:#64748b;font-variant-numeric:tabular-nums}
 .rec .tag{flex:none;font-size:12px;font-weight:700;padding:3px 8px;border-radius:6px}
@@ -75,6 +75,30 @@ body{
 .empty{color:#94a3b8;font-size:14px;text-align:center;padding:22px 0}
 .foot{display:flex;justify-content:center;gap:18px;padding:6px 0 2px}
 .foot button{border:0;background:transparent;color:#94a3b8;font-size:12.5px;padding:8px;font-family:inherit}
+
+/* ---------- 双列：左导尿 / 右饮水 ---------- */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.col{min-width:0}
+.col-head{display:flex;align-items:baseline;justify-content:space-between;gap:4px;
+  padding:7px 8px;border-radius:9px;margin-bottom:4px;font-size:13px;font-weight:800}
+.col-head .n{font-variant-numeric:tabular-nums;font-weight:700;font-size:12px;opacity:.75}
+.col-c .col-head{background:#e0e7ff;color:#3730a3}
+.col-w .col-head{background:#cffafe;color:#0e7490}
+.rec2{display:flex;align-items:center;gap:5px;padding:9px 8px;border-radius:8px;
+  border-top:1px solid #f8fafc;min-width:0}
+.rec2 .rt{flex:none;font-size:13.5px;color:#64748b;font-variant-numeric:tabular-nums}
+.rec2 .rv{margin-left:auto;font-weight:800;font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rec2 .u{font-size:10.5px;font-weight:700;color:#94a3b8;margin-left:1px}
+.rec2 .warnmark{display:inline-block;font-size:10px;font-weight:800;color:#dc2626;
+  background:#fee2e2;border-radius:4px;padding:1px 3px;margin-left:3px;vertical-align:1.5px}
+.rec2 .x{border:0;background:transparent;color:#d7dee8;font-size:19px;line-height:1;padding:1px 3px;font-family:inherit;flex:none}
+.rec2 .x:active{color:#ef4444}
+.rec2.over{background:#fef2f2}
+.rec2.over .rv{color:#dc2626}
+.warnmark{display:block;font-size:10.5px;font-weight:800;color:#dc2626;margin-top:1px;line-height:1.1}
+.col-empty{color:#cbd5e1;font-size:12.5px;text-align:center;padding:16px 0}
+.dh .sum.c{color:#4338ca}
+.dh .sum.w{color:#0e7490}
 
 /* ---------- 底部弹层 ---------- */
 .mask{position:fixed;inset:0;background:rgba(15,23,42,.32);opacity:0;pointer-events:none;transition:opacity .18s;z-index:20}
@@ -282,14 +306,14 @@ function renderStatus(){
   document.getElementById('todayLine').innerHTML = line;
 }
 
-/* ====== 记录列表 ====== */
+/* ====== 记录列表：左导尿 / 右饮水 ====== */
 function renderList(){
   var box = document.getElementById('list');
   if(data.length === 0){
     box.innerHTML = '<div class="empty">还没有记录</div>';
     return;
   }
-  var slice = data.slice(-400);
+  var slice = data.slice(-600);
   var groups = [], cur = null;
   for(var i=slice.length-1;i>=0;i--){
     var e = slice[i];
@@ -300,25 +324,47 @@ function renderList(){
 
   var html = '';
   groups.forEach(function(g){
-    var cN=0,cSum=0,wSum=0;
+    var caths = [], waters = [];
+    var cSum=0, wSum=0;
     g.items.forEach(function(e){
-      if(e.k==='c'){ cN++; cSum+=e.v; } else { wSum+=e.v; }
+      if(e.k==='c'){ caths.push(e); cSum += e.v; }
+      else { waters.push(e); wSum += e.v; }
     });
+
     html += '<div class="dh"><span>'+dayLabel(g.items[0].t)+'</span>'+
-            '<span class="sum">导尿'+cN+'次 '+cSum+'ml · 饮水'+wSum+'ml</span></div>';
-    g.items.forEach(function(e){
-      var isC = e.k === 'c';
-      html += '<div class="rec">'+
-        '<span class="rt">'+hm(e.t)+'</span>'+
-        '<span class="tag '+(isC?'c':'w')+'">'+(isC?'导尿':'喝水')+'</span>'+
-        '<span class="rv">'+e.v+'<span class="u">ml</span>'+
-          (isC && e.v > CFG.MAX_ML ? '<span class="warnmark">超'+CFG.MAX_ML+'</span>' : '')+
-        '</span>'+
-        '<button class="x" data-del="'+e.id+'">×</button>'+
-      '</div>';
-    });
+            '<span class="sum">导尿 '+caths.length+'次 '+cSum+'ml · 饮水 '+wSum+'ml</span></div>';
+
+    html += '<div class="cols">';
+    html += '<div class="col col-c">'+
+              '<div class="col-head"><span>导尿</span><span class="n">'+caths.length+' 次 · '+cSum+'ml</span></div>'+
+              (caths.length ? caths.map(rowCath).join('') : '<div class="col-empty">无</div>')+
+            '</div>';
+    html += '<div class="col col-w">'+
+              '<div class="col-head"><span>饮水</span><span class="n">'+waters.length+' 次 · '+wSum+'ml</span></div>'+
+              (waters.length ? waters.map(rowWater).join('') : '<div class="col-empty">无</div>')+
+            '</div>';
+    html += '</div>';
   });
   box.innerHTML = html;
+}
+
+function rowCath(e){
+  var over = e.v > CFG.MAX_ML;
+  return '<div class="rec2'+(over?' over':'')+'">'+
+      '<span class="rt">'+hm(e.t)+'</span>'+
+      '<span class="rv">'+e.v+'<span class="u">ml</span>'+
+        (over ? '<span class="warnmark">超'+CFG.MAX_ML+'</span>' : '')+
+      '</span>'+
+      '<button class="x" data-del="'+e.id+'">×</button>'+
+    '</div>';
+}
+
+function rowWater(e){
+  return '<div class="rec2">'+
+      '<span class="rt">'+hm(e.t)+'</span>'+
+      '<span class="rv">'+e.v+'<span class="u">ml</span></span>'+
+      '<button class="x" data-del="'+e.id+'">×</button>'+
+    '</div>';
 }
 
 function renderAll(){ renderStatus(); renderList(); }
