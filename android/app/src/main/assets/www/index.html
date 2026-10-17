@@ -76,7 +76,7 @@ body{
 .foot{display:flex;justify-content:center;gap:18px;padding:6px 0 2px}
 .foot button{border:0;background:transparent;color:#94a3b8;font-size:12.5px;padding:8px;font-family:inherit}
 
-/* ---------- 双列：左导尿 / 右饮水 ---------- */
+/* ---------- 双列：左导尿 / 右水分 ---------- */
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .col{min-width:0}
 .col-head{display:flex;align-items:baseline;justify-content:space-between;gap:4px;
@@ -99,6 +99,17 @@ body{
 .col-empty{color:#cbd5e1;font-size:12.5px;text-align:center;padding:16px 0}
 .dh .sum.c{color:#4338ca}
 .dh .sum.w{color:#0e7490}
+
+/* 间隔标记：距上次导尿 */
+.rec2 .gap{display:block;font-size:10.5px;font-weight:700;color:#94a3b8;
+  font-variant-numeric:tabular-nums;line-height:1.25;margin-top:1px}
+.rec2 .gap.long{color:#f59e0b}
+
+/* 水分类型小标签 */
+.rec2 .jt{display:inline-block;font-size:10px;font-weight:800;padding:1px 4px;border-radius:4px;
+  margin-right:3px;vertical-align:1.5px;background:#e0f2fe;color:#0369a1}
+.rec2 .jt.s{background:#fef3c7;color:#b45309}
+.rec2 .jt.p{background:#dcfce7;color:#15803d}
 
 /* ---------- 底部弹层 ---------- */
 .mask{position:fixed;inset:0;background:rgba(15,23,42,.32);opacity:0;pointer-events:none;transition:opacity .18s;z-index:20}
@@ -131,6 +142,27 @@ body{
 .btn-main{background:#2563eb;color:#fff}
 .btn-main:active{background:#1d4ed8}
 
+/* ---------- 滚轮选择器 ---------- */
+.picker{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 14px;position:relative}
+.picker .col{min-width:0;flex:none}
+.pwrap{height:132px;overflow-y:scroll;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;width:92px;position:relative;
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 22%,#000 78%,transparent);
+  mask-image:linear-gradient(to bottom,transparent,#000 22%,#000 78%,transparent)}
+.pwrap::-webkit-scrollbar{display:none}
+.pitem{height:44px;line-height:44px;text-align:center;font-size:19px;font-weight:700;
+  color:#cbd5e1;scroll-snap-align:center;font-variant-numeric:tabular-nums}
+.pitem.sel{color:#0f172a;font-size:23px;font-weight:800}
+.pitem.sel.over{color:#dc2626}
+.pind{position:absolute;left:0;right:0;top:50%;height:44px;margin-top:-22px;pointer-events:none;
+  border-top:1.5px solid #e2e8f0;border-bottom:1.5px solid #e2e8f0;background:rgba(37,99,235,.04);border-radius:10px}
+.punit{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:13px;font-weight:700;color:#94a3b8}
+
+/* ---------- 水分类型选择 ---------- */
+.jrow{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:12px}
+.jrow .chipbtn{padding:12px 0;font-size:15px}
+.jrow .chipbtn.on{background:#0e7490;color:#fff;box-shadow:0 2px 8px rgba(14,116,144,.3)}
+
 /* ---------- 提示条 ---------- */
 .toast{position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,16px);
   background:#0f172a;color:#fff;font-size:14.5px;font-weight:600;padding:12px 18px;border-radius:12px;
@@ -155,7 +187,7 @@ body{
 <button class="btn" id="btnCath">＋　记一次导尿</button>
 
 <div class="water-row">
-  <span class="water-label">💧 喝水</span>
+  <span class="water-label">💧 水分</span>
   <button class="chipbtn" data-w="100">+100</button>
   <button class="chipbtn" data-w="150">+150</button>
   <button class="chipbtn" data-w="200">+200</button>
@@ -176,9 +208,17 @@ body{
   <div class="sheet-box">
     <div class="sheet-title" id="sheetTitle">记录</div>
     <div class="sheet-hint" id="sheetHint"></div>
-    <div class="amt">
-      <input id="amt" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="0" autocomplete="off">
-      <span class="unit">ml</span>
+    <div class="jrow" id="jrow" style="display:none">
+      <button class="chipbtn on" type="button" data-j="w">喝水</button>
+      <button class="chipbtn" type="button" data-j="s">喝汤</button>
+      <button class="chipbtn" type="button" data-j="p">喝粥</button>
+    </div>
+    <div class="picker">
+      <div class="col">
+        <div class="pwrap" id="pwrap"></div>
+      </div>
+      <div class="pind"></div>
+      <span class="punit">ml</span>
     </div>
     <div class="chips" id="chips"></div>
     <label class="timerow">时间 <input id="tm" type="time"></label>
@@ -202,8 +242,18 @@ var CFG = {
   NIGHT_H  : 8,     // 夜间阈值（只显示，不报警）
   NIGHT_S  : 22,    // 夜间开始 22:00
   NIGHT_E  : 6,     // 夜间结束 06:00
+  DEF_CATH : 150,   // 导尿默认量
+  DEF_WATER: 150,   // 水分默认量
+  STEP     : 5,     // 滚轮步长 5ml
+  MIN_ML   : 0,
+  MAX_CATH : 400,
+  MAX_WATER: 1000,
   KEY      : 'cathlog_v1'
 };
+
+/* 水分类型 */
+var JLIST = { w:'喝水', s:'喝汤', p:'喝粥' };
+var JCLS  = { w:'', s:'s', p:'p' };
 
 /* ====== 存储（无 localStorage 时降级为内存） ====== */
 var data = [];
@@ -238,6 +288,22 @@ function fmtDur(ms){
   var h = Math.floor(m/60), mm = m%60;
   if(h === 0) return mm+'分';
   return h+'小时'+mm+'分';
+}
+
+/* 紧凑间隔：3h28min */
+function fmtGap(ms){
+  var m = Math.floor(ms/60000);
+  if(m < 1) return '0min';
+  var h = Math.floor(m/60), mm = m%60;
+  if(h === 0) return mm+'min';
+  if(mm === 0) return h+'h';
+  return h+'h'+p2(mm)+'min';
+}
+
+/* 水分类型（兼容旧记录：无 j 字段视为喝水） */
+function jOf(e){
+  if(e.k !== 'w') return '';
+  return (e.j === 's' || e.j === 'p') ? e.j : 'w';
 }
 
 /* ====== 提示条 ====== */
@@ -291,56 +357,80 @@ function renderStatus(){
 
   /* 今日汇总 */
   var tk = dayKey(now), cN=0, cSum=0, wSum=0, over=0;
+  var jSum = { w:0, s:0, p:0 };
   for(var i=0;i<data.length;i++){
     var e = data[i];
     if(dayKey(e.t) !== tk) continue;
     if(e.k === 'c'){ cN++; cSum += e.v; if(e.v > CFG.MAX_ML) over++; }
-    else { wSum += e.v; }
+    else { wSum += e.v; jSum[jOf(e)] += e.v; }
   }
   var line;
   if(cN === 0 && wSum === 0){ line = '今日还没有记录'; }
   else{
-    line = '今日　导尿 <b>'+cN+'</b> 次 · <b>'+cSum+'</b> ml　│　饮水 <b>'+wSum+'</b> ml';
+    line = '今日　导尿 <b>'+cN+'</b> 次 · <b>'+cSum+'</b> ml　│　水分 <b>'+wSum+'</b> ml';
+    var parts = [];
+    if(jSum.w) parts.push('水'+jSum.w);
+    if(jSum.s) parts.push('汤'+jSum.s);
+    if(jSum.p) parts.push('粥'+jSum.p);
+    if(parts.length > 1) line += '<br><span style="color:#64748b;font-size:13px">↳ ' + parts.join(' · ') + '</span>';
     if(over > 0) line += '<br><span class="over">⚠ 有 '+over+' 次超过 '+CFG.MAX_ML+' ml</span>';
   }
   document.getElementById('todayLine').innerHTML = line;
 }
 
-/* ====== 记录列表：左导尿 / 右饮水 ====== */
+/* ====== 记录列表：左导尿 / 右水分（每日升序） ====== */
 function renderList(){
   var box = document.getElementById('list');
   if(data.length === 0){
     box.innerHTML = '<div class="empty">还没有记录</div>';
     return;
   }
+
+  /* 已按时间升序；从新到旧分组，组内保持升序 */
   var slice = data.slice(-600);
   var groups = [], cur = null;
-  for(var i=slice.length-1;i>=0;i--){
+  for(var i=0;i<slice.length;i++){
     var e = slice[i];
     var k = dayKey(e.t);
-    if(!cur || cur.k !== k){ cur = {k:k, items:[]}; groups.push(cur); }
+    if(!cur || cur.k !== k){ cur = {k:k, items:[]}; groups.unshift(cur); }
     cur.items.push(e);
+  }
+
+  /* 预计算每次导尿距上次的间隔（跳天也计算） */
+  var gapMap = {};
+  var prevCath = null;
+  for(var p=0;p<slice.length;p++){
+    var en = slice[p];
+    if(en.k !== 'c') continue;
+    if(prevCath) gapMap[en.id] = en.t - prevCath.t;
+    prevCath = en;
   }
 
   var html = '';
   groups.forEach(function(g){
     var caths = [], waters = [];
     var cSum=0, wSum=0;
+    var jSum = { w:0, s:0, p:0 };
     g.items.forEach(function(e){
       if(e.k==='c'){ caths.push(e); cSum += e.v; }
-      else { waters.push(e); wSum += e.v; }
+      else { waters.push(e); wSum += e.v; jSum[jOf(e)] += e.v; }
     });
 
+    var jtxt = [];
+    if(jSum.w) jtxt.push('水'+jSum.w);
+    if(jSum.s) jtxt.push('汤'+jSum.s);
+    if(jSum.p) jtxt.push('粥'+jSum.p);
+
     html += '<div class="dh"><span>'+dayLabel(g.items[0].t)+'</span>'+
-            '<span class="sum">导尿 '+caths.length+'次 '+cSum+'ml · 饮水 '+wSum+'ml</span></div>';
+            '<span class="sum">导尿 '+caths.length+'次 '+cSum+'ml · 水分 '+wSum+'ml</span></div>';
 
     html += '<div class="cols">';
     html += '<div class="col col-c">'+
               '<div class="col-head"><span>导尿</span><span class="n">'+caths.length+' 次 · '+cSum+'ml</span></div>'+
-              (caths.length ? caths.map(rowCath).join('') : '<div class="col-empty">无</div>')+
+              (caths.length ? caths.map(function(e){ return rowCath(e, gapMap[e.id]); }).join('') : '<div class="col-empty">无</div>')+
             '</div>';
     html += '<div class="col col-w">'+
-              '<div class="col-head"><span>饮水</span><span class="n">'+waters.length+' 次 · '+wSum+'ml</span></div>'+
+              '<div class="col-head"><span>水分</span><span class="n">'+(jtxt.length ? jtxt.join('·') : '0')+'</span></div>'+
               (waters.length ? waters.map(rowWater).join('') : '<div class="col-empty">无</div>')+
             '</div>';
     html += '</div>';
@@ -348,10 +438,15 @@ function renderList(){
   box.innerHTML = html;
 }
 
-function rowCath(e){
+function rowCath(e, gapMs){
   var over = e.v > CFG.MAX_ML;
+  var gap = '';
+  if(gapMs != null){
+    var longCls = gapMs > CFG.DAY_H*3600000 ? ' long' : '';
+    gap = '<span class="gap'+longCls+'">+' + fmtGap(gapMs) + '</span>';
+  }
   return '<div class="rec2'+(over?' over':'')+'">'+
-      '<span class="rt">'+hm(e.t)+'</span>'+
+      '<span class="rt">'+hm(e.t)+gap+'</span>'+
       '<span class="rv">'+e.v+'<span class="u">ml</span>'+
         (over ? '<span class="warnmark">超'+CFG.MAX_ML+'</span>' : '')+
       '</span>'+
@@ -360,9 +455,11 @@ function rowCath(e){
 }
 
 function rowWater(e){
+  var j = jOf(e);
+  var tag = j === 'w' ? '' : '<span class="jt '+JCLS[j]+'">'+JLIST[j]+'</span>';
   return '<div class="rec2">'+
       '<span class="rt">'+hm(e.t)+'</span>'+
-      '<span class="rv">'+e.v+'<span class="u">ml</span></span>'+
+      '<span class="rv">'+tag+e.v+'<span class="u">ml</span></span>'+
       '<button class="x" data-del="'+e.id+'">×</button>'+
     '</div>';
 }
@@ -370,13 +467,15 @@ function rowWater(e){
 function renderAll(){ renderStatus(); renderList(); }
 
 /* ====== 新增 / 删除 ====== */
-function addEntry(kind, ml, ts){
-  data.push({
+function addEntry(kind, ml, ts, j){
+  var o = {
     id: String(ts) + Math.random().toString(36).slice(2,7),
     t: ts,
     k: kind,
     v: ml
-  });
+  };
+  if(kind === 'w' && j && j !== 'w') o.j = j;
+  data.push(o);
   data.sort(function(a,b){ return a.t - b.t; });
   save();
   renderAll();
@@ -389,16 +488,103 @@ function delEntry(id){
   renderAll();
 }
 
+/* ====== 滚轮选择器 ====== */
+var picker = { wrap:null, values:[], idx:0, timer:null };
+
+function buildPicker(max, initVal){
+  var wrap = document.getElementById('pwrap');
+  wrap.innerHTML = '';
+  var vals = [];
+  for(var v=CFG.STEP; v<=max; v+=CFG.STEP){ vals.push(v); }
+  picker.values = vals;
+  picker.wrap = wrap;
+
+  vals.forEach(function(v){
+    var d = document.createElement('div');
+    d.className = 'pitem';
+    d.textContent = v;
+    d.dataset.v = v;
+    wrap.appendChild(d);
+  });
+
+  /* 上下各垫一个空行，使首尾能对齐中线 */
+  var pad1 = document.createElement('div'); pad1.className = 'pitem'; pad1.style.height='44px'; pad1.style.visibility='hidden';
+  var pad2 = document.createElement('div'); pad2.className = 'pitem'; pad2.style.height='44px'; pad2.style.visibility='hidden';
+  wrap.insertBefore(pad1, wrap.firstChild);
+  wrap.appendChild(pad2);
+
+  var i = vals.indexOf(initVal);
+  if(i < 0) i = Math.min(vals.length-1, Math.max(0, Math.round((initVal-CFG.STEP)/CFG.STEP)));
+  picker.idx = i;
+
+  wrap.onscroll = function(){
+    clearTimeout(picker.timer);
+    picker.timer = setTimeout(function(){ snapPicker(); }, 90);
+  };
+
+  /* 点击某行直接选中 */
+  wrap.onclick = function(ev){
+    var t = ev.target;
+    if(!t || !t.dataset || !t.dataset.v) return;
+    var k = vals.indexOf(parseInt(t.dataset.v,10));
+    if(k >= 0) scrollToIdx(k, true);
+  };
+}
+
+function scrollToIdx(i, smooth){
+  var wrap = picker.wrap;
+  if(!wrap) return;
+  picker.idx = i;
+  wrap.scrollTo({ top: i*44, behavior: smooth ? 'smooth' : 'auto' });
+  setTimeout(markPicker, smooth ? 200 : 0);
+}
+
+function snapPicker(){
+  var wrap = picker.wrap;
+  if(!wrap) return;
+  var i = Math.round(wrap.scrollTop / 44);
+  i = Math.max(0, Math.min(picker.values.length-1, i));
+  picker.idx = i;
+  if(Math.abs(wrap.scrollTop - i*44) > 1){
+    wrap.scrollTo({ top: i*44, behavior:'smooth' });
+  }
+  markPicker();
+}
+
+function markPicker(){
+  var wrap = picker.wrap;
+  if(!wrap) return;
+  var items = wrap.querySelectorAll('.pitem[data-v]');
+  for(var i=0;i<items.length;i++){
+    var on = i === picker.idx;
+    items[i].className = 'pitem' + (on ? ' sel' : '') + (on && picker.values[i] > CFG.MAX_ML && sheetKind==='c' ? ' over' : '');
+  }
+}
+
+function pickerValue(){
+  return picker.values[picker.idx] || CFG.STEP;
+}
+
 /* ====== 底部弹层 ====== */
 var sheetKind = null;
+var sheetJ = 'w';
 function nowTimeValue(){
   var d = new Date();
   return p2(d.getHours())+':'+p2(d.getMinutes());
 }
-function openSheet(kind){
+
+function openSheet(kind, j){
   sheetKind = kind;
   var isC = kind === 'c';
-  document.getElementById('sheetTitle').textContent = isC ? '记录导尿' : '记录饮水';
+  sheetJ = j || 'w';
+  document.getElementById('sheetTitle').textContent = isC ? '记录导尿' : '记录水分';
+
+  /* 水分类型选择：仅水分时显示 */
+  var jrow = document.getElementById('jrow');
+  jrow.style.display = isC ? 'none' : 'grid';
+  Array.prototype.forEach.call(jrow.querySelectorAll('[data-j]'), function(b){
+    b.className = 'chipbtn' + (b.getAttribute('data-j') === sheetJ ? ' on' : '');
+  });
 
   var hint = '';
   if(isC){
@@ -407,11 +593,11 @@ function openSheet(kind){
   }else{
     var tk = dayKey(Date.now()), s = 0;
     data.forEach(function(e){ if(e.k==='w' && dayKey(e.t)===tk) s += e.v; });
-    hint = '今日已喝 ' + s + ' ml';
+    hint = '今日已摄入 ' + s + ' ml';
   }
   document.getElementById('sheetHint').textContent = hint;
 
-  var presets = isC ? [100,130,160,180] : [100,150,200,300];
+  var presets = isC ? [100,130,150,180] : [100,150,200,300];
   var chips = document.getElementById('chips');
   chips.innerHTML = '';
   presets.forEach(function(v){
@@ -419,20 +605,29 @@ function openSheet(kind){
     b.className = 'chipbtn';
     b.type = 'button';
     b.textContent = v;
-    b.onclick = function(){
-      document.getElementById('amt').value = v;
-      document.getElementById('amt').focus();
-    };
+    b.onclick = function(){ setPicker(v); };
     chips.appendChild(b);
   });
 
-  var input = document.getElementById('amt');
-  input.value = '';
+  buildPicker(isC ? CFG.MAX_CATH : CFG.MAX_WATER, isC ? CFG.DEF_CATH : CFG.DEF_WATER);
   document.getElementById('tm').value = nowTimeValue();
 
   document.getElementById('mask').className = 'mask open';
   document.getElementById('sheet').className = 'sheet open';
-  setTimeout(function(){ try{ input.focus(); }catch(e){} }, 220);
+
+  /* 回显到默认值 */
+  setTimeout(function(){
+    scrollToIdx(picker.idx, false);
+    markPicker();
+  }, 40);
+}
+
+function setPicker(val){
+  var i = picker.values.indexOf(val);
+  if(i < 0){
+    i = Math.min(picker.values.length-1, Math.max(0, Math.round((val-CFG.STEP)/CFG.STEP)));
+  }
+  scrollToIdx(i, true);
 }
 
 function closeSheet(){
@@ -444,10 +639,9 @@ function closeSheet(){
 
 function confirmSheet(){
   if(!sheetKind) return;
-  var v = parseInt(document.getElementById('amt').value, 10);
-  if(!v || v <= 0 || v > 3000){
-    toast('请输入正确的数值');
-    document.getElementById('amt').focus();
+  var v = pickerValue();
+  if(!v || v <= 0){
+    toast('请选择数值');
     return;
   }
   /* 时间：默认现在；若填的时间晚于现在 5 分钟以上，视为昨天 */
@@ -462,21 +656,31 @@ function confirmSheet(){
   }
 
   var kind = sheetKind;
-  addEntry(kind, v, ts);
+  var j = sheetJ;
+  addEntry(kind, v, ts, j);
   closeSheet();
 
   if(kind === 'c' && v > CFG.MAX_ML){
     toast('⚠ 本次 ' + v + ' ml，已超过 ' + CFG.MAX_ML + ' ml 上限', true);
+  }else if(kind === 'c'){
+    toast('已记录导尿 ' + v + ' ml');
   }else{
-    toast(kind === 'c' ? '已记录导尿 ' + v + ' ml' : '已记录饮水 ' + v + ' ml');
+    toast('已记录' + JLIST[j] + ' ' + v + ' ml');
   }
 }
 
 /* ====== 导出 CSV ====== */
 function buildCsv(){
-  var rows = [['日期','时间','事件','量(ml)']];
+  var rows = [['日期','时间','事件','量(ml)','距上次导尿']];
+  var prev = null;
   data.forEach(function(e){
-    rows.push([ dayKey(e.t), hm(e.t), e.k==='c' ? '导尿' : '饮水', e.v ]);
+    var gap = '';
+    if(e.k === 'c'){
+      if(prev) gap = fmtGap(e.t - prev.t);
+      prev = e;
+    }
+    var name = e.k === 'c' ? '导尿' : JLIST[jOf(e)];
+    rows.push([ dayKey(e.t), hm(e.t), name, e.v, gap ]);
   });
   return '\ufeff' + rows.map(function(r){ return r.join(','); }).join('\r\n');
 }
@@ -539,9 +743,20 @@ document.getElementById('btnCath').onclick = function(){ openSheet('c'); };
 Array.prototype.forEach.call(document.querySelectorAll('[data-w]'), function(b){
   b.onclick = function(){
     var v = parseInt(b.getAttribute('data-w'), 10);
-    if(v === 0){ openSheet('w'); return; }
-    addEntry('w', v, Date.now());
-    toast('已记录饮水 ' + v + ' ml');
+    if(v === 0){ openSheet('w', 'w'); return; }
+    addEntry('w', v, Date.now(), 'w');
+    toast('已记录喝水 ' + v + ' ml');
+  };
+});
+
+/* 水分类型切换 */
+Array.prototype.forEach.call(document.querySelectorAll('[data-j]'), function(b){
+  b.onclick = function(){
+    sheetJ = b.getAttribute('data-j');
+    var row = document.getElementById('jrow');
+    Array.prototype.forEach.call(row.querySelectorAll('[data-j]'), function(x){
+      x.className = 'chipbtn' + (x.getAttribute('data-j') === sheetJ ? ' on' : '');
+    });
   };
 });
 
@@ -568,9 +783,13 @@ document.getElementById('mask').onclick = closeSheet;
 document.getElementById('sheetCancel').onclick = closeSheet;
 document.getElementById('sheetOk').onclick = confirmSheet;
 
-document.getElementById('amt').addEventListener('keydown', function(e){
-  if(e.key === 'Enter'){ e.preventDefault(); confirmSheet(); }
-});
+/* 滚轮：鼠标滚 / 触摸滑动均可 */
+document.getElementById('pwrap').addEventListener('wheel', function(e){
+  e.preventDefault();
+  if(picker.wrap){
+    picker.wrap.scrollTop += (e.deltaY > 0 ? 44 : -44);
+  }
+}, {passive:false});
 
 /* ====== 启动 ====== */
 renderAll();
