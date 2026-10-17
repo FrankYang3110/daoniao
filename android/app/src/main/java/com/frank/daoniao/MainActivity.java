@@ -1,8 +1,12 @@
 package com.frank.daoniao;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ContentValues;
+import android.content.DialogInterface;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -27,11 +31,16 @@ import java.util.Locale;
 
 /**
  * 导尿记录 —— 完全离线运行，网页资源打包在 APK 内部。
- * 不申请任何权限，不联网。
+ * 不申请网络权限，不联网，数据只保存在本机 WebView 的 localStorage。
  */
 public class MainActivity extends Activity {
 
+    private static final int REQ_STORAGE = 1001;
+
     private WebView web;
+    /** 待保存的数据，等权限授予后再写 */
+    private String pendingName = null;
+    private String pendingBase64 = null;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -54,27 +63,25 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        s.setAllowFileAccess(true);
-        s.setAllowContentAccess(true);
         s.setTextZoom(100);
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(false);
-        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
-        // 安全：禁用文件跨域访问（Android 11+）
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            s.setAllowFileAccess(false);
-            s.setAllowContentAccess(true);
+        // 文件访问：Android 11+ 收紧，仅 assets 内部页面
+        s.setAllowFileAccess(true);
+        s.setAllowContentAccess(false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            s.setAllowFileAccessFromFileURLs(false);
+            s.setAllowUniversalAccessFromFileURLs(false);
         }
 
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // 全程只允许内部页面，不跳转外部
-                return true;
+                return true; // 全程不跳出应用
             }
         });
 
@@ -100,7 +107,41 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** 网页通过 window.AndroidBridge.saveCsv(name, content) 与原生通信 */
+    /* ---------------- 权限 ---------------- */
+
+    private boolean needStoragePermission() {
+        // Android 10 (Q) 起使用 MediaStore，无需权限
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                   != PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            requestPermissions(
+                    new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQ_STORAGE);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(code, perms, results);
+        if (code == REQ_STORAGE) {
+            boolean granted = results.length > 0
+                    && results[0] == PackageManager.PERMISSION_GRANTED;
+            if (granted && pendingBase64 != null) {
+                doSave(pendingName, pendingBase64);
+            } else if (!granted) {
+                toastLong("没有存储权限，无法保存到「下载」。可在系统设置里开启后重试。");
+            }
+            pendingName = null;
+            pendingBase64 = null;
+        }
+    }
+
+    /* ---------------- 原生桥接 ---------------- */
+
     private class Bridge {
 
         @JavascriptInterface
@@ -108,61 +149,88 @@ public class MainActivity extends Activity {
             return true;
         }
 
-        /** content 为 Base64 编码的 UTF-8 文本 */
+        /** 网页调用：返回 true 表示已接受（可能异步等权限） */
         @JavascriptInterface
         public boolean saveCsv(String fileName, String base64) {
-            try {
-                byte[] data = Base64.decode(base64, Base64.DEFAULT);
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    ContentValues cv = new ContentValues();
-                    cv.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-                    cv.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
-                    cv.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                            Environment.DIRECTORY_DOWNLOADS + "/导尿记录");
-                    Uri uri = getContentResolver()
-                            .insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
-                    if (uri == null) return false;
-                    OutputStream os = getContentResolver().openOutputStream(uri);
-                    if (os == null) return false;
-                    os.write(data);
-                    os.flush();
-                    os.close();
-                } else {
-                    File dir = new File(
-                            Environment.getExternalStoragePublicDirectory(
-                                    Environment.DIRECTORY_DOWNLOADS), "导尿记录");
-                    if (!dir.exists() && !dir.mkdirs()) return false;
-                    File f = new File(dir, fileName);
-                    FileOutputStream fos = new FileOutputStream(f);
-                    fos.write(data);
-                    fos.flush();
-                    fos.close();
-                }
-
-                final String msg = "已保存到：下载/导尿记录/" + fileName;
+            if (needStoragePermission()) {
+                pendingName = fileName;
+                pendingBase64 = base64;
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle("需要存储权限")
+                                .setMessage("导出 CSV 需要写入「下载」目录，请允许存储权限。")
+                                .setPositiveButton("去允许", new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface d, int i) {
+                                        requestStoragePermission();
+                                    }
+                                })
+                                .setNegativeButton("取消", null)
+                                .show();
                     }
                 });
                 return true;
-            } catch (Exception e) {
-                final String msg = "保存失败：" + e.getMessage();
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
-                    }
-                });
-                return false;
             }
+            return doSave(fileName, base64);
         }
+    }
 
-        @JavascriptInterface
-        public String todayName() {
-            return new SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(new Date());
+    /** 真正写入文件 */
+    private boolean doSave(String fileName, String base64) {
+        try {
+            byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues cv = new ContentValues();
+                cv.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+                cv.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
+                cv.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                        Environment.DIRECTORY_DOWNLOADS + "/导尿记录");
+                Uri uri = getContentResolver()
+                        .insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                if (uri == null) {
+                    toastLong("保存失败：无法创建文件");
+                    return false;
+                }
+                OutputStream os = getContentResolver().openOutputStream(uri);
+                if (os == null) {
+                    toastLong("保存失败：无法写入");
+                    return false;
+                }
+                os.write(bytes);
+                os.flush();
+                os.close();
+            } else {
+                File dir = new File(
+                        Environment.getExternalStoragePublicDirectory(
+                                Environment.DIRECTORY_DOWNLOADS), "导尿记录");
+                if (!dir.exists() && !dir.mkdirs()) {
+                    toastLong("保存失败：无法创建目录");
+                    return false;
+                }
+                File f = new File(dir, fileName);
+                FileOutputStream fos = new FileOutputStream(f);
+                fos.write(bytes);
+                fos.flush();
+                fos.close();
+            }
+
+            toastLong("已保存到：下载/导尿记录/" + fileName);
+            return true;
+        } catch (Exception e) {
+            toastLong("保存失败：" + e.getMessage());
+            return false;
         }
+    }
+
+    private void toastLong(final String msg) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
+            }
+        });
     }
 }
