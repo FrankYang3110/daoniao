@@ -261,9 +261,11 @@ var CFG = {
   NIGHT_E  : 6,     // 夜间结束 06:00
   DEF_CATH : 150,   // 导尿默认量
   DEF_WATER: 150,   // 水分默认量
-  STEP     : 5,     // 滚轮步长 5ml
-  MIN_ML   : 0,
-  MAX_CATH : 400,
+  STEP_CATH : 1,    // 导尿滚轮精度 1ml
+  STEP_WATER: 5,    // 水分滚轮精度 5ml
+  MIN_CATH : 10,    // 导尿最小 10ml
+  MAX_CATH : 300,   // 导尿最大 300ml
+  MIN_WATER: 5,
   MAX_WATER: 1000,
   KEY      : 'cathlog_v1'
 };
@@ -339,6 +341,12 @@ function toast(msg, bad){
 /* ====== 状态区 ====== */
 function lastCath(){
   for(var i=data.length-1;i>=0;i--){ if(data[i].k==='c') return data[i]; }
+  return null;
+}
+
+/* 上一次水分摄入（喝水/喝汤/喝粥 均算） */
+function lastWater(){
+  for(var i=data.length-1;i>=0;i--){ if(data[i].k==='w') return data[i]; }
   return null;
 }
 
@@ -421,14 +429,18 @@ function renderList(){
     cur.items.push(e);
   }
 
-  /* 预计算每次导尿距上次的间隔（跳天也计算） */
+  /* 预计算间隔：导尿↔上次导尿；水分↔上次水分（喝水/汤/粥均算） */
   var gapMap = {};
-  var prevCath = null;
+  var prevCath = null, prevWater = null;
   for(var p=0;p<slice.length;p++){
     var en = slice[p];
-    if(en.k !== 'c') continue;
-    if(prevCath) gapMap[en.id] = en.t - prevCath.t;
-    prevCath = en;
+    if(en.k === 'c'){
+      if(prevCath) gapMap[en.id] = en.t - prevCath.t;
+      prevCath = en;
+    }else if(en.k === 'w'){
+      if(prevWater) gapMap[en.id] = en.t - prevWater.t;
+      prevWater = en;
+    }
   }
 
   var html = '';
@@ -466,7 +478,7 @@ function renderList(){
             '</div>';
     html += '<div class="col col-w">'+
               '<div class="col-head"><span>水分</span><span class="n">'+(jtxt.length ? jtxt.join('·') : '0')+'</span></div>'+
-              (waters.length ? waters.map(rowWater).join('') : '<div class="col-empty">无</div>')+
+              (waters.length ? waters.map(function(e){ return rowWater(e, gapMap[e.id]); }).join('') : '<div class="col-empty">无</div>')+
             '</div>';
     html += '</div>';
   });
@@ -489,11 +501,15 @@ function rowCath(e, gapMs){
     '</div>';
 }
 
-function rowWater(e){
+function rowWater(e, gapMs){
   var j = jOf(e);
   var tag = j === 'w' ? '' : '<span class="jt '+JCLS[j]+'">'+JLIST[j]+'</span>';
+  var gap = '';
+  if(gapMs != null){
+    gap = '<span class="gap">+' + fmtGap(gapMs) + '</span>';
+  }
   return '<div class="rec2">'+
-      '<span class="rt">'+hm(e.t)+'</span>'+
+      '<span class="rt">'+hm(e.t)+gap+'</span>'+
       '<span class="rv">'+tag+e.v+'<span class="u">ml</span></span>'+
       '<button class="x" data-del="'+e.id+'">×</button>'+
     '</div>';
@@ -535,13 +551,18 @@ function delEntry(id){
 /* ====== 滚轮选择器 ====== */
 var picker = { wrap:null, values:[], idx:0, timer:null };
 
-function buildPicker(max, initVal){
+function buildPicker(isCath, initVal){
   var wrap = document.getElementById('pwrap');
   wrap.innerHTML = '';
+  var step = isCath ? CFG.STEP_CATH : CFG.STEP_WATER;
+  var min  = isCath ? CFG.MIN_CATH  : CFG.MIN_WATER;
+  var max  = isCath ? CFG.MAX_CATH  : CFG.MAX_WATER;
+
   var vals = [];
-  for(var v=CFG.STEP; v<=max; v+=CFG.STEP){ vals.push(v); }
+  for(var v=min; v<=max; v+=step){ vals.push(v); }
   picker.values = vals;
   picker.wrap = wrap;
+  picker.step = step;
 
   vals.forEach(function(v){
     var d = document.createElement('div');
@@ -558,7 +579,7 @@ function buildPicker(max, initVal){
   wrap.appendChild(pad2);
 
   var i = vals.indexOf(initVal);
-  if(i < 0) i = Math.min(vals.length-1, Math.max(0, Math.round((initVal-CFG.STEP)/CFG.STEP)));
+  if(i < 0) i = Math.min(vals.length-1, Math.max(0, Math.round((initVal-min)/step)));
   picker.idx = i;
 
   wrap.onscroll = function(){
@@ -580,7 +601,7 @@ function scrollToIdx(i, smooth){
   if(!wrap) return;
   picker.idx = i;
   wrap.scrollTo({ top: i*44, behavior: smooth ? 'smooth' : 'auto' });
-  setTimeout(markPicker, smooth ? 200 : 0);
+  setTimeout(markPicker, smooth ? 220 : 0);
 }
 
 function snapPicker(){
@@ -606,7 +627,7 @@ function markPicker(){
 }
 
 function pickerValue(){
-  return picker.values[picker.idx] || CFG.STEP;
+  return picker.values[picker.idx] || CFG.DEF_CATH;
 }
 
 /* ====== 底部弹层 ====== */
@@ -635,13 +656,14 @@ function openSheet(kind, j){
     var lc = lastCath();
     hint = lc ? '距上次导尿 ' + fmtDur(Date.now()-lc.t) : '这是第一条导尿记录';
   }else{
+    var lw = lastWater();
     var tk = dayKey(Date.now()), s = 0;
     data.forEach(function(e){ if(e.k==='w' && dayKey(e.t)===tk) s += e.v; });
-    hint = '今日已摄入 ' + s + ' ml';
+    hint = (lw ? '距上次摄入 ' + fmtDur(Date.now()-lw.t) + '　·　' : '') + '今日已摄入 ' + s + ' ml';
   }
   document.getElementById('sheetHint').textContent = hint;
 
-  var presets = isC ? [100,130,150,180] : [100,150,200,300];
+  var presets = isC ? [100,130,150,180] : [50,100,150,200];
   var chips = document.getElementById('chips');
   chips.innerHTML = '';
   presets.forEach(function(v){
@@ -653,7 +675,7 @@ function openSheet(kind, j){
     chips.appendChild(b);
   });
 
-  buildPicker(isC ? CFG.MAX_CATH : CFG.MAX_WATER, isC ? CFG.DEF_CATH : CFG.DEF_WATER);
+  buildPicker(isC, isC ? CFG.DEF_CATH : CFG.DEF_WATER);
   document.getElementById('tm').value = nowTimeValue();
 
   document.getElementById('mask').className = 'mask open';
@@ -669,7 +691,8 @@ function openSheet(kind, j){
 function setPicker(val){
   var i = picker.values.indexOf(val);
   if(i < 0){
-    i = Math.min(picker.values.length-1, Math.max(0, Math.round((val-CFG.STEP)/CFG.STEP)));
+    var min = picker.values[0] || 0;
+    i = Math.min(picker.values.length-1, Math.max(0, Math.round((val-min)/(picker.step||1))));
   }
   scrollToIdx(i, true);
 }
@@ -715,13 +738,16 @@ function confirmSheet(){
 
 /* ====== 导出 CSV ====== */
 function buildCsv(){
-  var rows = [['日期','时间','事件','量(ml)','距上次导尿']];
-  var prev = null;
+  var rows = [['日期','时间','事件','量(ml)','距上次同类型']];
+  var prevC = null, prevW = null;
   data.forEach(function(e){
     var gap = '';
     if(e.k === 'c'){
-      if(prev) gap = fmtGap(e.t - prev.t);
-      prev = e;
+      if(prevC) gap = fmtGap(e.t - prevC.t);
+      prevC = e;
+    }else if(e.k === 'w'){
+      if(prevW) gap = fmtGap(e.t - prevW.t);
+      prevW = e;
     }
     var name = e.k === 'c' ? '导尿' : (e.k === 'p' ? '排便' : JLIST[jOf(e)]);
     rows.push([ dayKey(e.t), hm(e.t), name, e.k === 'p' ? '' : e.v, gap ]);
