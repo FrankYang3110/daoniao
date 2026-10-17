@@ -6,6 +6,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ContentValues;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -16,6 +17,7 @@ import android.util.Base64;
 import android.view.View;
 import android.view.Window;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -36,11 +38,15 @@ import java.util.Locale;
 public class MainActivity extends Activity {
 
     private static final int REQ_STORAGE = 1001;
+    private static final int REQ_FILE = 1002;
 
     private WebView web;
     /** 待保存的数据，等权限授予后再写 */
     private String pendingName = null;
+    private String pendingMime = null;
     private String pendingBase64 = null;
+    /** 网页 <input type=file> 的回调 */
+    private ValueCallback<Uri[]> filePathCallback = null;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -90,6 +96,24 @@ public class MainActivity extends Activity {
             public void onPermissionRequest(android.webkit.PermissionRequest request) {
                 request.deny();
             }
+
+            /** 恢复备份：允许网页打开系统文件选择器（SAF，不需要存储权限） */
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> cb,
+                                             FileChooserParams params) {
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(null);
+                }
+                filePathCallback = cb;
+                try {
+                    Intent i = params.createIntent();
+                    startActivityForResult(i, REQ_FILE);
+                    return true;
+                } catch (Exception e) {
+                    filePathCallback = null;
+                    return false;
+                }
+            }
         });
 
         web.setBackgroundColor(0xFFEEF1F5);
@@ -105,6 +129,32 @@ public class MainActivity extends Activity {
         } else {
             super.onBackPressed();
         }
+    }
+
+    /* ------------- 网页里的 <input type=file> ------------- */
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        if (req == REQ_FILE) {
+            if (filePathCallback != null) {
+                Uri[] out = null;
+                if (res == RESULT_OK && data != null) {
+                    if (data.getData() != null) {
+                        out = new Uri[]{ data.getData() };
+                    } else if (data.getClipData() != null) {
+                        int n = data.getClipData().getItemCount();
+                        out = new Uri[n];
+                        for (int i = 0; i < n; i++) {
+                            out[i] = data.getClipData().getItemAt(i).getUri();
+                        }
+                    }
+                }
+                filePathCallback.onReceiveValue(out);
+                filePathCallback = null;
+            }
+            return;
+        }
+        super.onActivityResult(req, res, data);
     }
 
     /* ---------------- 权限 ---------------- */
@@ -131,11 +181,12 @@ public class MainActivity extends Activity {
             boolean granted = results.length > 0
                     && results[0] == PackageManager.PERMISSION_GRANTED;
             if (granted && pendingBase64 != null) {
-                doSave(pendingName, pendingBase64);
+                doSave(pendingName, pendingBase64, pendingMime);
             } else if (!granted) {
                 toastLong("没有存储权限，无法保存到「下载」。可在系统设置里开启后重试。");
             }
             pendingName = null;
+            pendingMime = null;
             pendingBase64 = null;
         }
     }
@@ -149,18 +200,26 @@ public class MainActivity extends Activity {
             return true;
         }
 
-        /** 网页调用：返回 true 表示已接受（可能异步等权限） */
+        /** 网页调用：导出 CSV（保留旧接口） */
         @JavascriptInterface
         public boolean saveCsv(String fileName, String base64) {
+            return saveFile(fileName, "text/csv", base64);
+        }
+
+        /** 网页调用：写文件到「下载/导尿记录/」。mime：text/csv 或 application/json */
+        @JavascriptInterface
+        public boolean saveFile(String fileName, String mime, String base64) {
+            if (mime == null || mime.length() == 0) mime = "text/csv";
             if (needStoragePermission()) {
                 pendingName = fileName;
+                pendingMime = mime;
                 pendingBase64 = base64;
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
                         new AlertDialog.Builder(MainActivity.this)
                                 .setTitle("需要存储权限")
-                                .setMessage("导出 CSV 需要写入「下载」目录，请允许存储权限。")
+                                .setMessage("导出文件需要写入「下载」目录，请允许存储权限。")
                                 .setPositiveButton("去允许", new DialogInterface.OnClickListener() {
                                     @Override
                                     public void onClick(DialogInterface d, int i) {
@@ -173,19 +232,19 @@ public class MainActivity extends Activity {
                 });
                 return true;
             }
-            return doSave(fileName, base64);
+            return doSave(fileName, base64, mime);
         }
     }
 
     /** 真正写入文件 */
-    private boolean doSave(String fileName, String base64) {
+    private boolean doSave(String fileName, String base64, String mime) {
         try {
             byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentValues cv = new ContentValues();
                 cv.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-                cv.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
+                cv.put(MediaStore.MediaColumns.MIME_TYPE, mime);
                 cv.put(MediaStore.MediaColumns.RELATIVE_PATH,
                         Environment.DIRECTORY_DOWNLOADS + "/导尿记录");
                 Uri uri = getContentResolver()

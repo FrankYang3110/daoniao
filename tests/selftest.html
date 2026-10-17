@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>selftest</title>
+<style>body{font:14px/1.6 monospace;padding:16px}pre{white-space:pre-wrap}.f{color:#b91c1c;font-weight:700}.p{color:#15803d}</style>
+</head>
+<body>
+<h3>导尿记录 · 自测</h3>
+<pre id="out">running…</pre>
+<iframe id="f" src="../index.html" style="width:420px;height:900px;border:1px solid #ccc"></iframe>
+<script>
+var lines = [], fails = 0;
+function ok(name, cond, extra){
+  if(!cond) fails++;
+  lines.push((cond ? 'PASS ' : 'FAIL ') + name + (cond || !extra ? '' : '  <' + extra + '>'));
+}
+function eq(name, a, b){ ok(name, a === b, JSON.stringify(a) + ' !== ' + JSON.stringify(b)); }
+function near(name, a, b, tol){ ok(name, Math.abs(a - b) <= (tol || 1), a + ' vs ' + b); }
+
+function run(w){
+  var D = w.DN;
+  /* 测试会触发一次 save()，结束前把真实数据放回去 */
+  var saved = null;
+  try{ saved = w.localStorage.getItem('cathlog_v1'); }catch(e){}
+  ok('DN 已注入', !!D);
+  if(!D) return;
+
+  /* --- median --- */
+  eq('median 奇数个', D.median([1,2,3]), 2);
+  eq('median 偶数个', D.median([1,2,3,4]), 2.5);
+  eq('median 空数组', D.median([]), 0);
+
+  /* --- 时间工具 --- */
+  eq('fmtGap 3h28min', D.fmtGap(3*3600000 + 28*60000), '3h28min');
+  eq('fmtGap 整点', D.fmtGap(2*3600000), '2h');
+  eq('dayKey', D.dayKey(new Date(2026,9,17,13,5).getTime()), '2026-10-17');
+  eq('dateValue', D.dateValue(new Date(2026,0,5,0,0).getTime()), '2026-01-05');
+  eq('hm', D.hm(new Date(2026,0,5,9,7).getTime()), '09:07');
+
+  /* --- 个人基线 --- */
+  var now = Date.now();
+  function mk(i, hoursAgo, ml){ return { id:'t'+i, t: now - hoursAgo*3600000, k:'c', v: ml }; }
+  /* 7 条导尿，间隔 3 小时，量 150 */
+  var arr = [];
+  for(var i=0;i<7;i++) arr.push(mk(i, i*3, 150));
+  D.setData(arr, true);
+  var b = D.computeBaseline();
+  ok('基线：样本够 → gapOK', b.gapOK);
+  near('基线：中位间隔约 3h', b.gapMs, 3*3600000, 60000);
+  eq('基线：中位量 150', b.volMed, 150);
+
+  /* 只有 2 条 → 退回默认 3h */
+  D.setData([mk(0,0,150), mk(1,3,150)], true);
+  var b2 = D.computeBaseline();
+  ok('基线：样本不足 → gapOK=false', !b2.gapOK);
+  eq('基线：样本不足退回 3h', b2.gapMs, 3*3600000);
+
+  /* 一个 20 小时的跨夜中断应被排除 */
+  var arr3 = [mk(0,0,150), mk(1,3,150), mk(2,6,150), mk(3,9,150), mk(4,12,150), mk(5,15,150), mk(6,35,150)];
+  D.setData(arr3, true);
+  var b3 = D.computeBaseline();
+  ok('基线：排除 >12h 的中断', b3.gapOK && Math.abs(b3.gapMs - 3*3600000) < 60000, b3.gapMs);
+
+  /* --- 备份往返 --- */
+  D.setData([mk(0,0,180), {id:'w1', t: now - 3600000, k:'w', v:100, j:'s'},
+             {id:'p1', t: now - 7200000, k:'p', v:0}], true);
+  var txt = D.buildBackup();
+  var back = D.parseBackup(txt);
+  ok('备份往返：条数一致', back && back.length === 3, back && back.length);
+  var byK = {};
+  (back || []).forEach(function(r){ byK[r.k] = r; });
+  eq('备份往返：汤类型保留', byK.w && byK.w.j, 's');
+  eq('备份往返：排便量 0', byK.p && byK.p.v, 0);
+  eq('备份往返：导尿量 180', byK.c && byK.c.v, 180);
+  ok('备份可被 JSON.parse', !!JSON.parse(txt).records);
+
+  /* --- 备份容错 --- */
+  eq('非 JSON 拒绝', D.parseBackup('hello'), null);
+  eq('缺 records 拒绝', D.parseBackup('{"a":1}'), null);
+  eq('脏记录被过滤', (D.parseBackup('[{"t":1,"k":"x"},{"t":2,"k":"c","v":100}]') || []).length, 1);
+  ok('裸数组可导入', (D.parseBackup('[{"t":1700000000000,"k":"c","v":120}]') || []).length === 1);
+
+  /* --- CSV --- */
+  var csv = D.buildCsv();
+  ok('CSV 有 BOM', csv.charCodeAt(0) === 0xFEFF);
+  ok('CSV 表头', csv.indexOf('日期,时间,事件,量(ml)') === 1, csv.slice(0, 24));
+  eq('CSV 行数 = 记录数+表头', csv.trim().split('\r\n').length, 4);
+
+  /* --- 日期时间读取 --- */
+  var doc = w.document;
+  var y = new Date(); y.setDate(y.getDate() - 1);
+  var ymd = y.getFullYear() + '-' + ('0'+(y.getMonth()+1)).slice(-2) + '-' + ('0'+y.getDate()).slice(-2);
+  doc.getElementById('dt').value = ymd;
+  doc.getElementById('tm').value = '08:30';
+  var want = new Date(y.getFullYear(), y.getMonth(), y.getDate(), 8, 30, 0, 0).getTime();
+  eq('readWhen 昨天 08:30', D.readWhen(), want);
+
+  doc.getElementById('dt').value = '2099-01-01';
+  eq('readWhen 拒绝未来', D.readWhen(), -1);
+
+  doc.getElementById('dt').value = '';
+  eq('readWhen 空值', D.readWhen(), null);
+
+  /* --- 渲染不报错 --- */
+  try{
+    D.setData(arr, true);
+    var badge = doc.getElementById('badge').textContent;
+    var today = doc.getElementById('todayLine').innerHTML;
+    ok('首页渲染：徽标有文字', !!badge && badge !== '无记录', badge);
+    ok('首页渲染：今日汇总有导尿', today.indexOf('导尿') >= 0);
+    ok('列表渲染：可点击编辑行', doc.getElementById('list').innerHTML.indexOf('data-edit=') >= 0);
+
+    ok('副标题给出预计时间', doc.getElementById('lastInfo').textContent.indexOf('预计') > 0,
+       doc.getElementById('lastInfo').textContent);
+
+  }catch(e){
+    ok('首页渲染不抛异常', false, e.message);
+  }
+
+  /* --- 阈值语义 --- */
+  eq('红色安全线 400', D.CFG.MAX_ML, 400);
+  eq('可录入上限 800', D.CFG.MAX_CATH, 800);
+
+  /* --- 一键记录 + 撤销（端到端） --- */
+  D.setData([], true);
+  doc.getElementById('btnPoo').click();
+  eq('一键记排便：+1 条', D.getData().length, 1);
+  var undoBtn = doc.getElementById('toastUndo');
+  ok('撤销按钮出现', undoBtn.style.display !== 'none', undoBtn.style.display);
+  undoBtn.click();
+  eq('撤销后回到 0 条', D.getData().length, 0);
+
+  /* 还原真实数据 */
+  try{
+    if(saved === null) w.localStorage.removeItem('cathlog_v1');
+    else w.localStorage.setItem('cathlog_v1', saved);
+  }catch(e){}
+}
+
+window.onload = function(){
+  var f = document.getElementById('f');
+  var go = function(){
+    var out = document.getElementById('out');
+    try{ run(f.contentWindow); }
+    catch(e){ fails++; lines.push('FAIL 运行异常: ' + e.message); }
+    var sum = (fails === 0 ? 'ALL PASS' : 'FAILURES: ' + fails) + '  (' + lines.length + ' checks)';
+    document.title = (fails === 0 ? 'OK ' : 'NG ') + sum;
+    out.textContent = lines.join('\n') + '\n\n==== ' + sum + ' ====';
+    out.innerHTML = out.innerHTML.replace(/^(PASS.*)$/gm, '<span class="p">$1</span>')
+                                 .replace(/^(FAIL.*)$/gm, '<span class="f">$1</span>');
+  };
+  /* iframe 已经加载完时 onload 不会再触发 */
+  if(f.contentWindow && f.contentWindow.DN){ setTimeout(go, 300); }
+  else { f.onload = function(){ setTimeout(go, 300); }; }
+};
+</script>
+</body>
+</html>

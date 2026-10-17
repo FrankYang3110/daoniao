@@ -28,6 +28,9 @@ body{
 .stat-label{font-size:13px;color:#64748b;font-weight:600;letter-spacing:.3px}
 .stat-main{display:flex;align-items:center;gap:10px;margin-top:2px;flex-wrap:wrap}
 .big{font-size:clamp(32px,10.5vw,44px);font-weight:800;line-height:1.15;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:#0f172a}
+.big.none{color:#94a3b8}
+.big.warn{color:#b45309}
+.big.late{color:#b91c1c}
 .badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:13px;font-weight:700;background:#eef2f7;color:#475569;white-space:nowrap}
 .badge.ok{background:#dcfce7;color:#15803d}
 .badge.warn{background:#fef3c7;color:#b45309}
@@ -182,6 +185,21 @@ body{
   opacity:0;pointer-events:none;transition:all .22s;z-index:40;max-width:88vw;text-align:center;line-height:1.4}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .toast.bad{background:#b91c1c}
+
+/* ---------- v1.1：撤销 / 夜间 / 编辑 ---------- */
+.toast.show.hasundo{pointer-events:auto}
+.toast .undo{border:0;background:#fff;color:#0f172a;font-weight:800;font-size:14px;
+  padding:6px 12px;border-radius:9px;font-family:inherit;white-space:nowrap}
+.toast .undo:active{background:#e2e8f0}
+.toast.bad .undo{color:#b91c1c}
+.nightmark{display:inline-block;font-size:10px;font-weight:800;color:#475569;background:#e2e8f0;
+  border-radius:4px;padding:1px 4px;margin-right:3px;vertical-align:1.5px}
+.moremark{display:inline-block;font-size:10px;font-weight:800;color:#64748b;background:#f1f5f9;
+  border-radius:4px;padding:1px 4px;margin-left:4px;vertical-align:1.5px}
+.rec2{cursor:pointer}
+.timerow input[type=date]{min-width:132px;padding:9px 8px}
+.sheet-actions.edit{grid-template-columns:1fr 1fr 1.25fr}
+.btn-danger{background:#fee2e2;color:#b91c1c}
 </style>
 </head>
 <body>
@@ -217,8 +235,11 @@ body{
 </div>
 
 <div class="foot">
+  <button id="btnBackup">备份数据</button>
+  <button id="btnRestore">恢复备份</button>
   <button id="btnClear">清空全部数据</button>
 </div>
+<input type="file" id="fileIn" accept=".json,application/json" style="display:none">
 
 <div class="mask" id="mask"></div>
 <div class="sheet" id="sheet">
@@ -230,7 +251,7 @@ body{
       <button class="chipbtn" type="button" data-j="s">喝汤</button>
       <button class="chipbtn" type="button" data-j="p">喝粥</button>
     </div>
-    <div class="picker">
+    <div class="picker" id="pickerBox">
       <div class="col">
         <div class="pwrap" id="pwrap"></div>
       </div>
@@ -238,15 +259,16 @@ body{
       <span class="punit">ml</span>
     </div>
     <div class="chips" id="chips"></div>
-    <label class="timerow">时间 <input id="tm" type="time"></label>
-    <div class="sheet-actions">
+    <label class="timerow"><input id="dt" type="date"> <input id="tm" type="time"></label>
+    <div class="sheet-actions" id="sheetActions">
+      <button class="btn-ghost btn-danger" id="sheetDel" style="display:none">删除</button>
       <button class="btn-ghost" id="sheetCancel">取消</button>
       <button class="btn-main" id="sheetOk">保　存</button>
     </div>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast"><span id="toastMsg"></span><button class="undo" id="toastUndo" type="button">撤销</button></div>
 
 <script>
 (function(){
@@ -254,8 +276,13 @@ body{
 
 /* ====== 参数：要改只改这里 ====== */
 var CFG = {
-  MAX_ML   : 180,   // 单次导尿上限，超过报警
-  DAY_H    : 3,     // 白天间隔提醒（小时）
+  MAX_ML   : 400,   // 单次导尿「红色」安全线：400ml 及以上算过多
+  MORE_X   : 1.5,   // 超过个人中位数的倍数 → 灰字「较多」（不标红）
+  BASE_DAYS: 14,    // 个人基线统计窗口（天）
+  BASE_MIN : 5,     // 至少有 5 个间隔样本才启用个人基线
+  GAP_WARN : 1.3,   // 超过个人中位间隔 1.3 倍 → 偏久
+  GAP_LATE : 1.6,   // 超过 1.6 倍 → 已超时
+  DAY_H    : 3,     // 样本不足时退回的默认间隔（小时）
   NIGHT_H  : 8,     // 夜间阈值（只显示，不报警）
   NIGHT_S  : 22,    // 夜间开始 22:00
   NIGHT_E  : 6,     // 夜间结束 06:00
@@ -264,7 +291,7 @@ var CFG = {
   STEP_CATH : 1,    // 导尿滚轮精度 1ml
   STEP_WATER: 5,    // 水分滚轮精度 5ml
   MIN_CATH : 10,    // 导尿最小 10ml
-  MAX_CATH : 300,   // 导尿最大 300ml
+  MAX_CATH : 800,   // 导尿可录入的最大值（能记进去，才可能被如实记下来）
   MIN_WATER: 5,
   MAX_WATER: 1000,
   KEY      : 'cathlog_v1'
@@ -319,6 +346,38 @@ function fmtGap(ms){
   return h+'h'+p2(mm)+'min';
 }
 
+/* ====== 个人基线：最近 14 天的中位数 ====== */
+var CUR = { n:0, gapMs:CFG.DAY_H*3600000, gapOK:false, volMed:0, volOK:false };
+
+function median(arr){
+  if(!arr || !arr.length) return 0;
+  var a = arr.slice().sort(function(x,y){ return x - y; });
+  var m = Math.floor(a.length/2);
+  return (a.length % 2) ? a[m] : (a[m-1] + a[m]) / 2;
+}
+
+/* 用最近 BASE_DAYS 天的记录，算出「平时多久一次」「平时一次多少」。
+   基线是描述性的，不是医嘱：它只用来判断“跟平常比怎么样”。 */
+function computeBaseline(){
+  var cut = Date.now() - CFG.BASE_DAYS*86400000;
+  var cs = [], i;
+  for(i=0;i<data.length;i++){ var e=data[i]; if(e.k==='c' && e.t>=cut) cs.push(e); }
+
+  var gaps = [], vols = [];
+  for(i=1;i<cs.length;i++){
+    var g = cs[i].t - cs[i-1].t;
+    if(g > 10*60000 && g <= 12*3600000) gaps.push(g);   /* 排除误触和跨夜中断 */
+  }
+  for(i=0;i<cs.length;i++){ if(cs[i].v > 0) vols.push(cs[i].v); }
+
+  CUR.n      = cs.length;
+  CUR.gapOK  = gaps.length >= CFG.BASE_MIN;
+  CUR.gapMs  = CUR.gapOK ? median(gaps) : CFG.DAY_H*3600000;
+  CUR.volOK  = vols.length >= CFG.BASE_MIN;
+  CUR.volMed = CUR.volOK ? median(vols) : 0;
+  return CUR;
+}
+
 /* 水分类型（兼容旧记录：无 j 字段视为喝水） */
 function jOf(e){
   if(e.k !== 'w') return '';
@@ -328,14 +387,31 @@ function jOf(e){
 /* 是否排便记录（k='p'，只记时间） */
 function isPoo(e){ return e.k === 'p'; }
 
-/* ====== 提示条 ====== */
-var toastTimer = null;
-function toast(msg, bad){
+/* ====== 提示条（可带「撤销」） ====== */
+var toastTimer = null, undoFn = null;
+
+/* 轻震一下：APK 里有 VIBRATE 权限时生效，浏览器里多数无效，失败就静默 */
+function buzz(){
+  try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){}
+}
+
+function hideToast(){
+  document.getElementById('toast').className = 'toast';
+  undoFn = null;
+}
+function toast(msg, bad, onUndo){
   var el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = 'toast show' + (bad ? ' bad' : '');
+  document.getElementById('toastMsg').textContent = msg;
+  undoFn = onUndo || null;
+  document.getElementById('toastUndo').style.display = undoFn ? 'inline-block' : 'none';
+  el.className = 'toast show' + (bad ? ' bad' : '') + (undoFn ? ' hasundo' : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(function(){ el.className = 'toast'; }, 2600);
+  toastTimer = setTimeout(hideToast, undoFn ? 5200 : 2600);
+}
+function runUndo(){
+  var fn = undoFn;
+  hideToast();
+  if(fn){ try{ fn(); }catch(e){} }
 }
 
 /* ====== 状态区 ====== */
@@ -357,9 +433,11 @@ function renderStatus(){
   var elB = document.getElementById('badge');
   var elL = document.getElementById('lastInfo');
 
+  var b = computeBaseline();
+
   if(!lc){
     elE.textContent = '—';
-    elE.style.color = '#94a3b8';
+    elE.className = 'big none';
     elB.className = 'badge';
     elB.textContent = '无记录';
     elL.textContent = '还没有导尿记录，点下面的蓝色按钮开始';
@@ -367,46 +445,51 @@ function renderStatus(){
     var ms = now - lc.t;
     elE.textContent = fmtDur(ms);
 
-    var cls, txt, col;
+    var cls, txt;
     if(isNight(now)){
-      cls=''; txt='夜间'; col='#475569';
+      cls=''; txt='夜间';
+    }else if(b.gapOK){
+      var r = ms / b.gapMs;
+      if(r < CFG.GAP_WARN){ cls='ok'; txt='正常'; }
+      else if(r < CFG.GAP_LATE){ cls='warn'; txt='偏久'; }
+      else { cls='late'; txt='已超时'; }
     }else{
       var h = ms/3600000;
-      if(h < CFG.DAY_H){ cls='ok'; txt='正常'; col='#0f172a'; }
-      else if(h < CFG.DAY_H+0.5){ cls='warn'; txt='该导尿了'; col='#b45309'; }
-      else { cls='late'; txt='已超时'; col='#b91c1c'; }
+      if(h < CFG.DAY_H){ cls='ok'; txt='正常'; }
+      else if(h < CFG.DAY_H+0.5){ cls='warn'; txt='偏久'; }
+      else { cls='late'; txt='已超时'; }
     }
-    elE.style.color = col;
+    elE.className = 'big' + (cls ? ' '+cls : '');
     elB.className = 'badge' + (cls ? ' '+cls : '');
     elB.textContent = txt;
 
-    elL.textContent = '上次 ' + dayLabel(lc.t).replace(' · ',' ') + ' ' + hm(lc.t) + ' · ' + lc.v + ' ml';
+    var isToday = dayKey(lc.t) === dayKey(now);
+    var when = isToday ? hm(lc.t) : dayLabel(lc.t).replace(' · ',' ') + ' ' + hm(lc.t);
+    var info = '上次 ' + when + ' · ' + lc.v + ' ml';
+    if(!isNight(now)){
+      info += ' · 平时 ' + fmtGap(b.gapMs) + ' · 预计 ' + hm(lc.t + b.gapMs);
+    }
+    elL.textContent = info;
   }
 
-  /* 今日汇总 */
-  var tk = dayKey(now), cN=0, cSum=0, wSum=0, over=0, pN=0;
-  var jSum = { w:0, s:0, p:0 };
+  /* 今日汇总（次要信息压成一行，明细在列表里看） */
+  var tk = dayKey(now), cN=0, cSum=0, wSum=0, over=0, pN=0, nightN=0;
   for(var i=0;i<data.length;i++){
     var e = data[i];
     if(dayKey(e.t) !== tk) continue;
-    if(e.k === 'c'){ cN++; cSum += e.v; if(e.v > CFG.MAX_ML) over++; }
+    if(e.k === 'c'){ cN++; cSum += e.v; if(e.v >= CFG.MAX_ML) over++; if(isNight(e.t)) nightN++; }
     else if(e.k === 'p'){ pN++; }
-    else { wSum += e.v; jSum[jOf(e)] += e.v; }
+    else { wSum += e.v; }
   }
   var line;
   if(cN === 0 && wSum === 0 && pN === 0){ line = '<span style="color:#94a3b8">今日还没有记录</span>'; }
   else{
     line = '<div class="tsum">'+
-      '<span class="it">导尿 <b>'+cN+'</b> 次 · <b>'+cSum+'</b> ml</span>'+
+      '<span class="it">导尿 <b>'+cN+'</b> 次 · <b>'+cSum+'</b> ml'+(nightN ? '（夜'+nightN+'）' : '')+'</span>'+
       '<span class="it">水分 <b>'+wSum+'</b> ml</span>'+
       (pN > 0 ? '<span class="it">排便 <b>'+pN+'</b> 次</span>' : '')+
     '</div>';
-    var parts = [];
-    if(jSum.w) parts.push('水'+jSum.w);
-    if(jSum.s) parts.push('汤'+jSum.s);
-    if(jSum.p) parts.push('粥'+jSum.p);
-    if(parts.length > 1) line += '<span style="color:#94a3b8;font-size:13px">↳ ' + parts.join(' · ') + '</span>';
-    if(over > 0) line += '<br><span class="over">⚠ 有 '+over+' 次超过 '+CFG.MAX_ML+' ml</span>';
+    if(over > 0) line += '<br><span class="over">⚠ 有 '+over+' 次达到 '+CFG.MAX_ML+' ml 以上</span>';
   }
   document.getElementById('todayLine').innerHTML = line;
 }
@@ -486,16 +569,19 @@ function renderList(){
 }
 
 function rowCath(e, gapMs){
-  var over = e.v > CFG.MAX_ML;
+  var over = e.v >= CFG.MAX_ML;
+  var more = !over && CUR.volMed > 0 && e.v > CUR.volMed*CFG.MORE_X;
   var gap = '';
   if(gapMs != null){
-    var longCls = gapMs > CFG.DAY_H*3600000 ? ' long' : '';
+    var longCls = gapMs > CUR.gapMs*CFG.GAP_LATE ? ' long' : '';
     gap = '<span class="gap'+longCls+'">+' + fmtGap(gapMs) + '</span>';
   }
-  return '<div class="rec2'+(over?' over':'')+'">'+
-      '<span class="rt">'+hm(e.t)+gap+'</span>'+
+  var night = isNight(e.t) ? '<span class="nightmark">夜</span>' : '';
+  return '<div class="rec2'+(over?' over':'')+'" data-edit="'+e.id+'">'+
+      '<span class="rt">'+night+hm(e.t)+gap+'</span>'+
       '<span class="rv">'+e.v+'<span class="u">ml</span>'+
-        (over ? '<span class="warnmark">超'+CFG.MAX_ML+'</span>' : '')+
+        (over ? '<span class="warnmark">偏多</span>'
+              : (more ? '<span class="moremark">较多</span>' : ''))+
       '</span>'+
       '<button class="x" data-del="'+e.id+'">×</button>'+
     '</div>';
@@ -508,8 +594,9 @@ function rowWater(e, gapMs){
   if(gapMs != null){
     gap = '<span class="gap">+' + fmtGap(gapMs) + '</span>';
   }
-  return '<div class="rec2">'+
-      '<span class="rt">'+hm(e.t)+gap+'</span>'+
+  var night = isNight(e.t) ? '<span class="nightmark">夜</span>' : '';
+  return '<div class="rec2" data-edit="'+e.id+'">'+
+      '<span class="rt">'+night+hm(e.t)+gap+'</span>'+
       '<span class="rv">'+tag+e.v+'<span class="u">ml</span></span>'+
       '<button class="x" data-del="'+e.id+'">×</button>'+
     '</div>';
@@ -517,8 +604,9 @@ function rowWater(e, gapMs){
 
 /* 排便：只记时间，右侧显示“排便” */
 function rowPoo(e){
-  return '<div class="rec2 poo">'+
-      '<span class="rt">'+hm(e.t)+'</span>'+
+  var night = isNight(e.t) ? '<span class="nightmark">夜</span>' : '';
+  return '<div class="rec2 poo" data-edit="'+e.id+'">'+
+      '<span class="rt">'+night+hm(e.t)+'</span>'+
       '<span class="rv poov">排便</span>'+
       '<button class="x" data-del="'+e.id+'">×</button>'+
     '</div>';
@@ -526,7 +614,7 @@ function rowPoo(e){
 
 function renderAll(){ renderStatus(); renderList(); }
 
-/* ====== 新增 / 删除 ====== */
+/* ====== 新增 / 删除 / 撤销 ====== */
 function addEntry(kind, ml, ts, j){
   var o = {
     id: String(ts) + Math.random().toString(36).slice(2,7),
@@ -539,13 +627,29 @@ function addEntry(kind, ml, ts, j){
   data.sort(function(a,b){ return a.t - b.t; });
   save();
   renderAll();
+  buzz();
+  return o;
 }
 
+function findEntry(id){
+  for(var i=0;i<data.length;i++){ if(data[i].id === id) return data[i]; }
+  return null;
+}
+
+/* 删除后 5 秒内可撤销，代替确认弹窗 */
 function delEntry(id){
-  if(!confirm('删除这条记录？')) return;
-  data = data.filter(function(e){ return e.id !== id; });
+  var e = findEntry(id);
+  if(!e) return;
+  data = data.filter(function(x){ return x.id !== id; });
   save();
   renderAll();
+  toast('已删除 ' + hm(e.t) + ' 这条记录', false, function(){
+    data.push(e);
+    data.sort(function(a,b){ return a.t - b.t; });
+    save();
+    renderAll();
+    toast('已恢复');
+  });
 }
 
 /* ====== 滚轮选择器 ====== */
@@ -630,29 +734,54 @@ function pickerValue(){
   return picker.values[picker.idx] || CFG.DEF_CATH;
 }
 
-/* ====== 底部弹层 ====== */
+/* ====== 底部弹层（新增 / 编辑共用） ====== */
 var sheetKind = null;
 var sheetJ = 'w';
+var editId = null;
+
 function nowTimeValue(){
   var d = new Date();
   return p2(d.getHours())+':'+p2(d.getMinutes());
 }
+function dateValue(ts){
+  var d = new Date(ts);
+  return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+}
 
-function openSheet(kind, j){
+/* 读日期 + 时间。null = 没填好，-1 = 晚于现在 */
+function readWhen(){
+  var dv = document.getElementById('dt').value || '';
+  var tv = document.getElementById('tm').value || '';
+  var p = dv.split('-'), q = tv.split(':');
+  if(p.length !== 3 || q.length !== 2) return null;
+  var d = new Date(+p[0], +p[1]-1, +p[2], +q[0], +q[1], 0, 0);
+  var t = d.getTime();
+  if(isNaN(t)) return null;
+  if(t > Date.now() + 60000) return -1;
+  return t;
+}
+
+function openSheet(kind, j, entry){
   sheetKind = kind;
+  editId = entry ? entry.id : null;
   var isC = kind === 'c';
-  sheetJ = j || 'w';
-  document.getElementById('sheetTitle').textContent = isC ? '记录导尿' : '记录水分';
+  var isP = kind === 'p';
+  sheetJ = entry && entry.k === 'w' ? jOf(entry) : (j || 'w');
+
+  document.getElementById('sheetTitle').textContent =
+    editId ? (isP ? '编辑排便' : '编辑记录') : (isC ? '记录导尿' : '记录水分');
 
   /* 水分类型选择：仅水分时显示 */
   var jrow = document.getElementById('jrow');
-  jrow.style.display = isC ? 'none' : 'grid';
+  jrow.style.display = (!isC && !isP) ? 'grid' : 'none';
   Array.prototype.forEach.call(jrow.querySelectorAll('[data-j]'), function(b){
     b.className = 'chipbtn' + (b.getAttribute('data-j') === sheetJ ? ' on' : '');
   });
 
   var hint = '';
-  if(isC){
+  if(editId){
+    hint = '改完点「保存」；也可以在下面直接删除';
+  }else if(isC){
     var lc = lastCath();
     hint = lc ? '距上次导尿 ' + fmtDur(Date.now()-lc.t) : '这是第一条导尿记录';
   }else{
@@ -663,29 +792,41 @@ function openSheet(kind, j){
   }
   document.getElementById('sheetHint').textContent = hint;
 
-  var presets = isC ? [100,130,150,180] : [50,100,150,200];
+  /* 数值区：排便只改时间 */
+  document.getElementById('pickerBox').style.display = isP ? 'none' : 'flex';
   var chips = document.getElementById('chips');
+  chips.style.display = isP ? 'none' : 'grid';
   chips.innerHTML = '';
-  presets.forEach(function(v){
-    var b = document.createElement('button');
-    b.className = 'chipbtn';
-    b.type = 'button';
-    b.textContent = v;
-    b.onclick = function(){ setPicker(v); };
-    chips.appendChild(b);
-  });
 
-  buildPicker(isC, isC ? CFG.DEF_CATH : CFG.DEF_WATER);
-  document.getElementById('tm').value = nowTimeValue();
+  if(!isP){
+    var presets = isC ? [100,130,150,180] : [50,100,150,200];
+    presets.forEach(function(v){
+      var b = document.createElement('button');
+      b.className = 'chipbtn';
+      b.type = 'button';
+      b.textContent = v;
+      b.onclick = function(){ setPicker(v); };
+      chips.appendChild(b);
+    });
+    buildPicker(isC, entry ? entry.v : (isC ? CFG.DEF_CATH : CFG.DEF_WATER));
+  }
+
+  document.getElementById('dt').value = entry ? dateValue(entry.t) : dateValue(Date.now());
+  document.getElementById('tm').value = entry ? hm(entry.t) : nowTimeValue();
+
+  /* 只有编辑模式才出现「删除」 */
+  document.getElementById('sheetDel').style.display = editId ? 'block' : 'none';
+  document.getElementById('sheetActions').className = 'sheet-actions' + (editId ? ' edit' : '');
 
   document.getElementById('mask').className = 'mask open';
   document.getElementById('sheet').className = 'sheet open';
 
-  /* 回显到默认值 */
-  setTimeout(function(){
-    scrollToIdx(picker.idx, false);
-    markPicker();
-  }, 40);
+  if(!isP){
+    setTimeout(function(){
+      scrollToIdx(picker.idx, false);
+      markPicker();
+    }, 40);
+  }
 }
 
 function setPicker(val){
@@ -701,38 +842,62 @@ function closeSheet(){
   document.getElementById('mask').className = 'mask';
   document.getElementById('sheet').className = 'sheet';
   sheetKind = null;
+  editId = null;
   try{ document.activeElement.blur(); }catch(e){}
 }
 
 function confirmSheet(){
   if(!sheetKind) return;
-  var v = pickerValue();
-  if(!v || v <= 0){
-    toast('请选择数值');
+  var kind = sheetKind;
+
+  var ts = readWhen();
+  if(ts === null){ toast('请选择日期和时间', true); return; }
+  if(ts === -1){ toast('时间不能晚于现在', true); return; }
+
+  var v = 0;
+  if(kind !== 'p'){
+    v = pickerValue();
+    if(!v || v <= 0){ toast('请选择数值', true); return; }
+  }
+
+  /* 编辑已有记录 */
+  if(editId){
+    var e = findEntry(editId);
+    if(e){
+      e.t = ts;
+      if(kind !== 'p') e.v = v;
+      if(e.k === 'w'){
+        if(sheetJ === 's' || sheetJ === 'p') e.j = sheetJ;
+        else delete e.j;
+      }
+      data.sort(function(a,b){ return a.t - b.t; });
+      save();
+      renderAll();
+      buzz();
+      toast('已修改');
+    }
+    closeSheet();
     return;
   }
-  /* 时间：默认现在；若填的时间晚于现在 5 分钟以上，视为昨天 */
-  var now = new Date();
-  var parts = (document.getElementById('tm').value || '').split(':');
-  var ts = now.getTime();
-  if(parts.length === 2){
-    var d = new Date(now.getTime());
-    d.setHours(parseInt(parts[0],10), parseInt(parts[1],10), 0, 0);
-    if(d.getTime() > now.getTime() + 5*60000){ d.setDate(d.getDate()-1); }
-    ts = d.getTime();
-  }
 
-  var kind = sheetKind;
+  /* 新增 */
   var j = sheetJ;
-  addEntry(kind, v, ts, j);
+  var rec = addEntry(kind, v, ts, j);
   closeSheet();
 
-  if(kind === 'c' && v > CFG.MAX_ML){
-    toast('⚠ 本次 ' + v + ' ml，已超过 ' + CFG.MAX_ML + ' ml 上限', true);
+  var undo = function(){
+    data = data.filter(function(x){ return x.id !== rec.id; });
+    save();
+    renderAll();
+    toast('已撤销');
+  };
+
+  if(kind === 'c' && v >= CFG.MAX_ML){
+    toast('已记录 ' + v + ' ml，已达到 ' + CFG.MAX_ML + ' ml 安全线', true, undo);
   }else if(kind === 'c'){
-    toast('已记录导尿 ' + v + ' ml');
+    toast('已记录导尿 ' + v + ' ml', false, undo);
   }else{
-    toast('已记录' + JLIST[j] + ' ' + v + ' ml');
+    toast('已记录' + JLIST[j] + ' ' + v + ' ml', false, undo);
   }
 }
 
@@ -773,26 +938,18 @@ function toBase64(str){
   return btoa(bin);
 }
 
-function exportCsv(){
-  if(data.length === 0){ toast('还没有数据可以导出'); return; }
-  var csv = buildCsv();
-  var name = '导尿记录_' + dayKey(Date.now()) + '.csv';
-
-  /* APK 内部：交给原生写入「下载/导尿记录/」 */
+/* 保存文本：APK 内交给原生写文件，浏览器走 Blob 下载 */
+function saveText(name, mime, text){
   var nb = nativeBridge();
   if(nb){
     try{
-      if(nb.saveCsv(name, toBase64(csv))){ toast('已保存到 下载/导尿记录'); }
-      else { toast('保存失败，请重试', true); }
-    }catch(e){
-      toast('保存失败：' + e.message, true);
-    }
-    return;
+      var b64 = toBase64(text);
+      var ok = nb.saveFile ? nb.saveFile(name, mime, b64) : nb.saveCsv(name, b64);
+      return !!ok;
+    }catch(e){ return false; }
   }
-
-  /* 浏览器：Blob 下载 */
   try{
-    var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+    var blob = new Blob([text], {type: mime + ';charset=utf-8'});
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
@@ -801,10 +958,87 @@ function exportCsv(){
     a.click();
     a.remove();
     setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
-    toast('已导出，请到「下载」里找');
-  }catch(e){
-    toast('导出失败，请用 Chrome 打开本页', true);
+    return true;
+  }catch(e){ return false; }
+}
+
+function stamp(){
+  var d = new Date();
+  return dayKey(d.getTime()) + '_' + p2(d.getHours()) + p2(d.getMinutes());
+}
+
+function exportCsv(){
+  if(data.length === 0){ toast('还没有数据可以导出'); return; }
+  var name = '导尿记录_' + stamp() + '.csv';
+  if(saveText(name, 'text/csv', buildCsv())) toast('已导出 CSV：' + name);
+  else toast('导出失败，请重试', true);
+}
+
+/* ====== 备份 / 恢复 ====== */
+function buildBackup(){
+  return JSON.stringify({
+    app: 'daoniao',
+    version: 2,
+    exportedAt: Date.now(),
+    count: data.length,
+    records: data
+  }, null, 1);
+}
+
+/* 兼容两种文件：本 App 的备份对象，或一个裸数组 */
+function parseBackup(text){
+  var o;
+  try{ o = JSON.parse(text); }catch(e){ return null; }
+  var arr = Array.isArray(o) ? o : (o && Array.isArray(o.records) ? o.records : null);
+  if(!arr) return null;
+  var out = [], i;
+  for(i=0;i<arr.length;i++){
+    var e = arr[i];
+    if(!e || typeof e.t !== 'number' || (e.k !== 'c' && e.k !== 'w' && e.k !== 'p')) continue;
+    var r = {
+      id: e.id ? String(e.id) : (String(e.t) + Math.random().toString(36).slice(2,7)),
+      t: e.t,
+      k: e.k,
+      v: (typeof e.v === 'number' && isFinite(e.v)) ? e.v : 0
+    };
+    if(e.k === 'w' && (e.j === 's' || e.j === 'p')) r.j = e.j;
+    out.push(r);
   }
+  return out.length ? out : null;
+}
+
+function exportJson(quiet){
+  if(data.length === 0){ toast('还没有数据'); return false; }
+  var name = '导尿记录_备份_' + stamp() + '.json';
+  var ok = saveText(name, 'application/json', buildBackup());
+  if(ok){
+    if(!quiet) toast('已备份 ' + data.length + ' 条：' + name);
+  }else{
+    toast('备份失败，请重试', true);
+  }
+  return ok;
+}
+
+function doRestore(text){
+  var arr = parseBackup(text);
+  if(!arr){ toast('这个文件不是备份文件', true); return; }
+  if(!confirm('备份里有 ' + arr.length + ' 条记录，会替换当前的 ' + data.length + ' 条。\n先备份当前数据一份，再继续？')) return;
+  exportJson(true);
+  data = arr;
+  data.sort(function(a,b){ return a.t - b.t; });
+  save();
+  renderAll();
+  toast('已恢复 ' + arr.length + ' 条记录');
+}
+
+/* 新增后 5 秒内可撤销 */
+function undoAdd(rec){
+  return function(){
+    data = data.filter(function(x){ return x.id !== rec.id; });
+    save();
+    renderAll();
+    toast('已撤销');
+  };
 }
 
 /* ====== 事件绑定 ====== */
@@ -812,16 +1046,16 @@ document.getElementById('btnCath').onclick = function(){ openSheet('c'); };
 
 /* 排便：一键记录当前时间，不需弹层 */
 document.getElementById('btnPoo').onclick = function(){
-  addEntry('p', 0, Date.now(), 'w');
-  toast('已记录排便 ' + hm(Date.now()));
+  var rec = addEntry('p', 0, Date.now(), 'w');
+  toast('已记录排便 ' + hm(rec.t), false, undoAdd(rec));
 };
 
 Array.prototype.forEach.call(document.querySelectorAll('[data-w]'), function(b){
   b.onclick = function(){
     var v = parseInt(b.getAttribute('data-w'), 10);
     if(v === 0){ openSheet('w', 'w'); return; }
-    addEntry('w', v, Date.now(), 'w');
-    toast('已记录喝水 ' + v + ' ml');
+    var rec = addEntry('w', v, Date.now(), 'w');
+    toast('已记录喝水 ' + v + ' ml', false, undoAdd(rec));
   };
 });
 
@@ -836,18 +1070,53 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-j]'), function(b){
   };
 });
 
+/* 列表：点 × 删除（可撤销），点整行进编辑 */
 document.getElementById('list').onclick = function(ev){
-  var t = ev.target;
-  if(t && t.getAttribute && t.getAttribute('data-del')){
-    delEntry(t.getAttribute('data-del'));
+  var node = ev.target;
+  while(node && node !== this &&
+        !(node.getAttribute && (node.getAttribute('data-del') || node.getAttribute('data-edit')))){
+    node = node.parentNode;
   }
+  if(!node || node === this) return;
+
+  var delId = node.getAttribute && node.getAttribute('data-del');
+  if(delId){ delEntry(delId); return; }
+
+  var id = node.getAttribute && node.getAttribute('data-edit');
+  var e = id ? findEntry(id) : null;
+  if(e) openSheet(e.k, jOf(e), e);
 };
 
 document.getElementById('btnCsv').onclick = exportCsv;
+document.getElementById('btnBackup').onclick = function(){ exportJson(false); };
+
+document.getElementById('btnRestore').onclick = function(){
+  if(data.length > 0 && !confirm('恢复会覆盖当前记录。\n建议先点「备份数据」导出一份。继续吗？')) return;
+  document.getElementById('fileIn').click();
+};
+
+document.getElementById('fileIn').onchange = function(){
+  var f = this.files && this.files[0];
+  if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){ doRestore(String(rd.result)); };
+  rd.onerror = function(){ toast('读不到这个文件', true); };
+  rd.readAsText(f);
+  this.value = '';
+};
+
+document.getElementById('toastUndo').onclick = runUndo;
+
+document.getElementById('sheetDel').onclick = function(){
+  if(!editId) return;
+  var id = editId;
+  closeSheet();
+  delEntry(id);
+};
 
 document.getElementById('btnClear').onclick = function(){
   if(data.length === 0){ toast('没有数据'); return; }
-  if(!confirm('确定要清空全部 ' + data.length + ' 条记录吗？此操作无法撤销。\n建议先点「导出 CSV」备份。')) return;
+  if(!confirm('确定要清空全部 ' + data.length + ' 条记录吗？此操作无法撤销。\n建议先点「备份数据」。')) return;
   if(!confirm('再次确认：真的要全部删除吗？')) return;
   data = [];
   save();
@@ -880,6 +1149,22 @@ if('serviceWorker' in navigator && location.protocol.indexOf('http') === 0){
     navigator.serviceWorker.register('sw.js').catch(function(){});
   });
 }
+
+/* ====== 自测钩子（tests/selftest.html 用，不影响正常功能） ====== */
+window.DN = {
+  CFG: CFG, CUR: CUR, median: median, computeBaseline: computeBaseline,
+  dayKey: dayKey, hm: hm, dateValue: dateValue, readWhen: readWhen,
+  fmtGap: fmtGap, fmtDur: fmtDur, buildCsv: buildCsv,
+  buildBackup: buildBackup, parseBackup: parseBackup, isNight: isNight,
+  openSheet: openSheet, closeSheet: closeSheet, findEntry: findEntry,
+  getData: function(){ return data; },
+  setData: function(a, noSave){
+    data = a;
+    data.sort(function(x,y){ return x.t - y.t; });
+    if(!noSave) save();
+    renderAll();
+  }
+};
 
 })();
 </script>

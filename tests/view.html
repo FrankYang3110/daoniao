@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>view</title>
+<style>html,body{margin:0}#f{width:390px;height:1400px;border:0;display:block}#diag{font:12px monospace;color:#b91c1c}</style>
+</head>
+<body>
+<div id="diag">…</div>
+<iframe id="f"></iframe>
+<script>
+(function(){
+  var H = 3600000, now = Date.now(), rows = [], err = '';
+  function add(hoursAgo, k, v, j){
+    var o = { id: 's' + rows.length + Math.random().toString(36).slice(2,5), t: now - hoursAgo*H, k: k, v: v };
+    if(j && j !== 'w') o.j = j;
+    rows.push(o);
+  }
+  add(0.8,  'c', 160);
+  add(3.3,  'c', 185);
+  add(6.6,  'c', 420);
+  add(2.1,  'w', 150);
+  add(3.9,  'w', 200, 's');
+  add(5.2,  'w', 300);
+  add(7.0,  'w', 100, 'p');
+  add(9.6,  'p', 0);
+  add(26,   'c', 170);
+  add(29.5, 'c', 150);
+  add(33,   'c', 165);
+  add(27,   'w', 200);
+  add(30,   'w', 250);
+  /* more=1 时再多铺几天，用来验证长列表与粘顶日期头 */
+  if(/more=1/.test(location.search)){
+    for(var d=2; d<9; d++){
+      add(d*24 + 1,  'c', 150 + (d%3)*20);
+      add(d*24 + 4,  'c', 160);
+      add(d*24 + 7,  'c', 140);
+      add(d*24 + 2,  'w', 200);
+      add(d*24 + 6,  'w', 150);
+    }
+  }
+  localStorage.setItem('cathlog_v1', JSON.stringify(rows));
+
+  var q  = location.search.match(/src=([^&]+)/);
+  var qo = location.search.match(/open=([a-z]+)/);
+  var qh = location.search.match(/h=(\d+)/);
+  var f = document.getElementById('f');
+  if(qh) f.style.height = qh[1] + 'px';
+  f.onload = function(){
+    setTimeout(function(){
+      try{
+        var d = f.contentDocument || f.contentWindow.document;
+        /* 无头截图里 CSS 过渡不会推进，先把动画关掉 */
+        var st = d.createElement('style');
+        st.textContent = '*{transition:none!important;animation:none!important}' +
+          (/dbg=1/.test(location.search) ? '.dh{outline:2px solid red}' : '');
+        (d.head || d.documentElement).appendChild(st);
+        if(qo && qo[1] === 'cath') f.contentWindow.DN.openSheet('c');
+        if(qo && qo[1] === 'badtime'){
+          f.contentWindow.DN.openSheet('c');
+          setTimeout(function(){
+            d.getElementById('dt').value = '2099-01-01';
+            d.getElementById('sheetOk').click();
+          }, 120);
+        }
+        if(qo && qo[1] === 'edit'){
+          var row = d.querySelector('[data-edit]');
+          if(row) row.click();
+        }
+        var qs = location.search.match(/scroll=(\d+)/);
+        if(qs) f.contentWindow.scrollTo(0, parseInt(qs[1], 10));
+      }catch(e){ err = 'open error: ' + e.message; }
+      setTimeout(function(){
+        try{
+          var d2 = f.contentDocument || f.contentWindow.document;
+          var sw = d2.documentElement.scrollWidth, cw = f.clientWidth;
+          var sheetCls = d2.getElementById('sheet').className;
+          var dh = d2.querySelector('.dh');
+          var bx = d2.querySelector('.rec2 .x');
+          var bxr = bx ? bx.getBoundingClientRect() : null;
+          var info = 'viewport=' + cw + ' scrollWidth=' + sw +
+                     (sw > cw ? '  OVERFLOW +' + (sw-cw) + 'px' : '  OK') +
+                     '  sheet=' + sheetCls +
+                     '  scrollY=' + Math.round(f.contentWindow.scrollY) +
+                     '  dhTop=' + (dh ? Math.round(dh.getBoundingClientRect().top) : 'na') +
+                     '  xBtn=' + (bxr ? Math.round(bxr.width) + 'x' + Math.round(bxr.height) : 'na');
+          document.getElementById('diag').textContent = err ? err : info;
+          document.title = 'DIAG ' + (err ? err : info);
+        }catch(e){
+          document.getElementById('diag').textContent = 'diag error: ' + e.message;
+        }
+      }, 500);
+    }, 250);
+  };
+  f.src = q ? decodeURIComponent(q[1]) : '../index.html';
+})();
+</script>
+</body>
+</html>
