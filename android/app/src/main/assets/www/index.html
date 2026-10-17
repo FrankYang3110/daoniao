@@ -46,9 +46,9 @@ body{
 .btn:active{transform:translateY(1px);box-shadow:0 2px 8px rgba(37,99,235,.25)}
 
 /* ---------- 喝水行 ---------- */
-.water-row{display:grid;grid-template-columns:auto repeat(4,minmax(0,1fr));gap:6px;align-items:center;margin-bottom:14px}
-.water-label{font-size:15px;font-weight:700;color:#0e7490;white-space:nowrap;padding-right:2px}
-.chipbtn{border:0;border-radius:12px;padding:14px 0;font-size:15px;font-weight:700;min-width:0;overflow:hidden;
+.water-row{display:grid;grid-template-columns:auto repeat(5,minmax(0,1fr));gap:5px;align-items:center;margin-bottom:14px}
+.water-label{font-size:15px;font-weight:700;color:#0e7490;white-space:nowrap;padding-right:1px}
+.chipbtn{border:0;border-radius:12px;padding:14px 0;font-size:14.5px;font-weight:700;min-width:0;overflow:hidden;
   background:#e0f2fe;color:#075985;font-family:inherit;font-variant-numeric:tabular-nums}
 .chipbtn:active{background:#bae6fd}
 .chipbtn.alt{background:#f1f5f9;color:#475569}
@@ -188,6 +188,7 @@ body{
 
 <div class="water-row">
   <span class="water-label">💧 水分</span>
+  <button class="chipbtn" data-w="50">+50</button>
   <button class="chipbtn" data-w="100">+100</button>
   <button class="chipbtn" data-w="150">+150</button>
   <button class="chipbtn" data-w="200">+200</button>
