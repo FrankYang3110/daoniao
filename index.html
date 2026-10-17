@@ -427,19 +427,56 @@ function confirmSheet(){
 }
 
 /* ====== 导出 CSV ====== */
-function exportCsv(){
-  if(data.length === 0){ toast('还没有数据可以导出'); return; }
+function buildCsv(){
   var rows = [['日期','时间','事件','量(ml)']];
   data.forEach(function(e){
     rows.push([ dayKey(e.t), hm(e.t), e.k==='c' ? '导尿' : '饮水', e.v ]);
   });
-  var csv = '\ufeff' + rows.map(function(r){ return r.join(','); }).join('\r\n');
+  return '\ufeff' + rows.map(function(r){ return r.join(','); }).join('\r\n');
+}
+
+/* 是否运行在 APK 内部（由原生注入 AndroidBridge） */
+function nativeBridge(){
+  try{
+    if(window.AndroidBridge && window.AndroidBridge.hasNative && window.AndroidBridge.hasNative()){
+      return window.AndroidBridge;
+    }
+  }catch(e){}
+  return null;
+}
+
+/* UTF-8 字符串 -> Base64 */
+function toBase64(str){
+  var bytes = new TextEncoder().encode(str);
+  var bin = '';
+  for(var i=0;i<bytes.length;i++){ bin += String.fromCharCode(bytes[i]); }
+  return btoa(bin);
+}
+
+function exportCsv(){
+  if(data.length === 0){ toast('还没有数据可以导出'); return; }
+  var csv = buildCsv();
+  var name = '导尿记录_' + dayKey(Date.now()) + '.csv';
+
+  /* APK 内部：交给原生写入「下载/导尿记录/」 */
+  var nb = nativeBridge();
+  if(nb){
+    try{
+      if(nb.saveCsv(name, toBase64(csv))){ toast('已保存到 下载/导尿记录'); }
+      else { toast('保存失败，请重试', true); }
+    }catch(e){
+      toast('保存失败：' + e.message, true);
+    }
+    return;
+  }
+
+  /* 浏览器：Blob 下载 */
   try{
     var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = '导尿记录_' + dayKey(Date.now()) + '.csv';
+    a.download = name;
     document.body.appendChild(a);
     a.click();
     a.remove();
