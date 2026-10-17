@@ -543,6 +543,8 @@ function buzz(){
 
 function hideToast(){
   document.getElementById('toast').className = 'toast';
+  /* 按钮也要藏回去，否则下一条只有文字的提示会露出旧回调的「撤销」 */
+  document.getElementById('toastUndo').style.display = 'none';
   undoFn = null;
 }
 function toast(msg, bad, onUndo){
@@ -1060,6 +1062,18 @@ function confirmSheet(){
   }
 }
 
+/* CSV 单元格转义：含逗号/双引号/换行时用双引号包起来（RFC 4180） */
+function csvCell(v){
+  var s = (v === null || v === undefined) ? '' : String(v);
+  if(/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+/* CSV 行必须用 CRLF；单元格统一走 csvCell */
+function csvRow(cells){
+  return cells.map(csvCell).join(',');
+}
+
 /* ====== 导出 CSV ====== */
 function buildCsv(){
   var rows = [['日期','时间','事件','量(ml)','距上次同类型']];
@@ -1076,7 +1090,7 @@ function buildCsv(){
     var name = e.k === 'c' ? '导尿' : (e.k === 'p' ? '排便' : JLIST[jOf(e)]);
     rows.push([ dayKey(e.t), hm(e.t), name, e.k === 'p' ? '' : e.v, gap ]);
   });
-  return '\ufeff' + rows.map(function(r){ return r.join(','); }).join('\r\n');
+  return '\ufeff' + rows.map(csvRow).join('\r\n');
 }
 
 /* 是否运行在 APK 内部（由原生注入 AndroidBridge） */
@@ -1316,9 +1330,11 @@ window.DN = {
   assessVol: assessVol, assessGap: assessGap,
   dayKey: dayKey, hm: hm, dateValue: dateValue, readWhen: readWhen,
   fmtGap: fmtGap, fmtDur: fmtDur, buildCsv: buildCsv,
+  csvCell: csvCell, csvRow: csvRow,
   buildBackup: buildBackup, parseBackup: parseBackup, isNight: isNight,
   openSheet: openSheet, closeSheet: closeSheet, findEntry: findEntry,
   getData: function(){ return data; },
+  hideToast: hideToast, toast: toast,
   setData: function(a, noSave){
     data = a;
     data.sort(function(x,y){ return x.t - y.t; });

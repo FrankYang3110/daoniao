@@ -84,8 +84,17 @@ function run(w){
   /* --- CSV --- */
   var csv = D.buildCsv();
   ok('CSV 有 BOM', csv.charCodeAt(0) === 0xFEFF);
-  ok('CSV 表头', csv.indexOf('日期,时间,事件,量(ml)') === 1, csv.slice(0, 24));
+  eq('CSV 表头', csv.split('\r\n')[0], '\ufeff日期,时间,事件,量(ml),距上次同类型');
   eq('CSV 行数 = 记录数+表头', csv.trim().split('\r\n').length, 4);
+
+  /* --- CSV 转义（RFC 4180） --- */
+  eq('csvCell 普通', D.csvCell('导尿'), '导尿');
+  eq('csvCell 数字', D.csvCell(150), '150');
+  eq('csvCell 空值', D.csvCell(null), '');
+  eq('csvCell 含逗号', D.csvCell('粥,加肉松'), '"粥,加肉松"');
+  eq('csvCell 含双引号', D.csvCell('他说"好"'), '"他说""好"""');
+  eq('csvCell 含换行', D.csvCell('a\nb'), '"a\nb"');
+  eq('csvRow 混合', D.csvRow(['日期','粥,加肉松',150]), '日期,"粥,加肉松",150');
 
   /* --- 日期时间读取 --- */
   var doc = w.document;
@@ -106,14 +115,17 @@ function run(w){
   try{
     D.setData(arr, true);
     var badge = doc.getElementById('badge').textContent;
+    var info = doc.getElementById('lastInfo').textContent;
     var today = doc.getElementById('todayLine').innerHTML;
     ok('首页渲染：徽标有文字', !!badge && badge !== '无记录', badge);
     ok('首页渲染：今日汇总有导尿', today.indexOf('导尿') >= 0);
     ok('列表渲染：可点击编辑行', doc.getElementById('list').innerHTML.indexOf('data-edit=') >= 0);
     ok('底部悬浮主按钮存在', !!doc.querySelector('.dock'));
     ok('顶部按钮行已移除', !doc.querySelector('.main-row'));
-    ok('副标题给出预计时间', doc.getElementById('lastInfo').textContent.indexOf('预计') > 0,
-       doc.getElementById('lastInfo').textContent);
+    ok('副标题给出预计时间', D.isNight(Date.now())
+      ? info.indexOf('预计') < 0        /* 夜间按设计不催，不应出现「预计」 */
+      : info.indexOf('预计') > 0,
+      'night=' + D.isNight(Date.now()) + ' info=' + info);
 
     /* 弹层打开时，提示条必须避开弹层按钮 */
     D.openSheet('c');
@@ -171,6 +183,17 @@ function run(w){
   ok('撤销按钮出现', undoBtn.style.display !== 'none', undoBtn.style.display);
   undoBtn.click();
   eq('撤销后回到 0 条', D.getData().length, 0);
+
+  /* --- 回归：提示条隐藏后，撤销按钮必须一并藏回 --- */
+  D.setData([], true);
+  doc.getElementById('btnPoo').click();
+  ok('撤销按钮先出现', doc.getElementById('toastUndo').style.display !== 'none');
+  D.hideToast();
+  eq('提示条隐藏后撤销按钮同步隐藏', doc.getElementById('toastUndo').style.display, 'none');
+  D.toast('只有文字的提示');
+  eq('后续普通提示不露出撤销', doc.getElementById('toastUndo').style.display, 'none');
+  D.hideToast();
+  eq('回归结束无残留记录', D.getData().length, 1);   /* 上面新增的 1 条仍在 */
 
   /* 还原真实数据 */
   try{
