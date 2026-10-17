@@ -35,15 +35,26 @@ body{
 @keyframes blink{50%{opacity:.45}}
 .stat-sub{font-size:13.5px;color:#64748b;margin-top:6px;font-variant-numeric:tabular-nums}
 .stat-div{height:1px;background:#f1f5f9;margin:12px 0 10px}
-.today{font-size:14px;color:#334155;line-height:1.7;font-variant-numeric:tabular-nums}
+.today{font-size:14px;color:#334155;line-height:1.75;font-variant-numeric:tabular-nums}
 .today b{font-weight:800;font-size:15.5px;color:#0f172a}
+.today .seg{white-space:nowrap}
+.tsum{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:2px;font-size:14px;color:#334155;
+  font-variant-numeric:tabular-nums}
+.tsum .it{white-space:nowrap}
+.tsum .it b{font-size:15.5px;font-weight:800;color:#0f172a;margin:0 1px}
 .over{color:#dc2626;font-weight:700}
 
 /* ---------- 主按钮 ---------- */
-.btn{display:block;width:100%;border:0;border-radius:16px;padding:19px;font-size:20px;font-weight:800;
-  color:#fff;background:#2563eb;box-shadow:0 4px 14px rgba(37,99,235,.28);margin-bottom:12px;
+.main-row{display:grid;grid-template-columns:2.15fr 1fr;gap:8px;margin-bottom:12px}
+.btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;border:0;border-radius:16px;
+  padding:14px 8px;font-size:19px;font-weight:800;
+  color:#fff;background:#2563eb;box-shadow:0 4px 14px rgba(37,99,235,.28);
   font-family:inherit;letter-spacing:.5px}
 .btn:active{transform:translateY(1px);box-shadow:0 2px 8px rgba(37,99,235,.25)}
+.btn-poo{background:#f1f5f9;color:#7c4a1e;box-shadow:none;font-size:15px;font-weight:800;
+  flex-direction:column;gap:1px;line-height:1.15;letter-spacing:0;padding:10px 4px}
+.btn-poo:active{background:#e2e8f0;transform:translateY(1px);box-shadow:none}
+.btn-poo .em{font-size:16px;line-height:1}
 
 /* ---------- 喝水行 ---------- */
 .water-row{display:grid;grid-template-columns:auto repeat(5,minmax(0,1fr));gap:5px;align-items:center;margin-bottom:14px}
@@ -80,8 +91,8 @@ body{
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .col{min-width:0}
 .col-head{display:flex;align-items:baseline;justify-content:space-between;gap:4px;
-  padding:7px 8px;border-radius:9px;margin-bottom:4px;font-size:13px;font-weight:800}
-.col-head .n{font-variant-numeric:tabular-nums;font-weight:700;font-size:12px;opacity:.75}
+  padding:7px 8px;border-radius:9px;margin-bottom:4px;font-size:13px;font-weight:800;white-space:nowrap}
+.col-head .n{font-variant-numeric:tabular-nums;font-weight:700;font-size:12px;opacity:.75;white-space:nowrap}
 .col-c .col-head{background:#e0e7ff;color:#3730a3}
 .col-w .col-head{background:#cffafe;color:#0e7490}
 .rec2{display:flex;align-items:center;gap:5px;padding:9px 8px;border-radius:8px;
@@ -95,6 +106,8 @@ body{
 .rec2 .x:active{color:#ef4444}
 .rec2.over{background:#fef2f2}
 .rec2.over .rv{color:#dc2626}
+.rec2.poo{background:#fdf6ec;border-radius:8px}
+.rec2 .poov{font-size:14px;font-weight:800;color:#92400e;white-space:nowrap}
 .warnmark{display:block;font-size:10.5px;font-weight:800;color:#dc2626;margin-top:1px;line-height:1.1}
 .col-empty{color:#cbd5e1;font-size:12.5px;text-align:center;padding:16px 0}
 .dh .sum.c{color:#4338ca}
@@ -184,7 +197,10 @@ body{
   <div class="today" id="todayLine">今日还没有记录</div>
 </div>
 
-<button class="btn" id="btnCath">＋　记一次导尿</button>
+<div class="main-row">
+  <button class="btn" id="btnCath">＋ 记一次导尿</button>
+  <button class="btn btn-poo" id="btnPoo"><span class="em">💩</span>记排便</button>
+</div>
 
 <div class="water-row">
   <span class="water-label">💧 水分</span>
@@ -307,6 +323,9 @@ function jOf(e){
   return (e.j === 's' || e.j === 'p') ? e.j : 'w';
 }
 
+/* 是否排便记录（k='p'，只记时间） */
+function isPoo(e){ return e.k === 'p'; }
+
 /* ====== 提示条 ====== */
 var toastTimer = null;
 function toast(msg, bad){
@@ -357,23 +376,28 @@ function renderStatus(){
   }
 
   /* 今日汇总 */
-  var tk = dayKey(now), cN=0, cSum=0, wSum=0, over=0;
+  var tk = dayKey(now), cN=0, cSum=0, wSum=0, over=0, pN=0;
   var jSum = { w:0, s:0, p:0 };
   for(var i=0;i<data.length;i++){
     var e = data[i];
     if(dayKey(e.t) !== tk) continue;
     if(e.k === 'c'){ cN++; cSum += e.v; if(e.v > CFG.MAX_ML) over++; }
+    else if(e.k === 'p'){ pN++; }
     else { wSum += e.v; jSum[jOf(e)] += e.v; }
   }
   var line;
-  if(cN === 0 && wSum === 0){ line = '今日还没有记录'; }
+  if(cN === 0 && wSum === 0 && pN === 0){ line = '<span style="color:#94a3b8">今日还没有记录</span>'; }
   else{
-    line = '今日　导尿 <b>'+cN+'</b> 次 · <b>'+cSum+'</b> ml　│　水分 <b>'+wSum+'</b> ml';
+    line = '<div class="tsum">'+
+      '<span class="it">导尿 <b>'+cN+'</b> 次 · <b>'+cSum+'</b> ml</span>'+
+      '<span class="it">水分 <b>'+wSum+'</b> ml</span>'+
+      (pN > 0 ? '<span class="it">排便 <b>'+pN+'</b> 次</span>' : '')+
+    '</div>';
     var parts = [];
     if(jSum.w) parts.push('水'+jSum.w);
     if(jSum.s) parts.push('汤'+jSum.s);
     if(jSum.p) parts.push('粥'+jSum.p);
-    if(parts.length > 1) line += '<br><span style="color:#64748b;font-size:13px">↳ ' + parts.join(' · ') + '</span>';
+    if(parts.length > 1) line += '<span style="color:#94a3b8;font-size:13px">↳ ' + parts.join(' · ') + '</span>';
     if(over > 0) line += '<br><span class="over">⚠ 有 '+over+' 次超过 '+CFG.MAX_ML+' ml</span>';
   }
   document.getElementById('todayLine').innerHTML = line;
@@ -409,26 +433,36 @@ function renderList(){
 
   var html = '';
   groups.forEach(function(g){
-    var caths = [], waters = [];
+    var caths = [], waters = [], poos = [];
     var cSum=0, wSum=0;
     var jSum = { w:0, s:0, p:0 };
     g.items.forEach(function(e){
       if(e.k==='c'){ caths.push(e); cSum += e.v; }
+      else if(e.k==='p'){ poos.push(e); }
       else { waters.push(e); wSum += e.v; jSum[jOf(e)] += e.v; }
     });
+
+    /* 左列：导尿 + 排便，按时间合并升序 */
+    var left = caths.concat(poos).sort(function(a,b){ return a.t - b.t; });
 
     var jtxt = [];
     if(jSum.w) jtxt.push('水'+jSum.w);
     if(jSum.s) jtxt.push('汤'+jSum.s);
     if(jSum.p) jtxt.push('粥'+jSum.p);
 
+    var dhRight = '导尿 '+caths.length+'次 '+cSum+'ml · 水分 '+wSum+'ml';
+    if(poos.length) dhRight += ' · 便'+poos.length;
+
     html += '<div class="dh"><span>'+dayLabel(g.items[0].t)+'</span>'+
-            '<span class="sum">导尿 '+caths.length+'次 '+cSum+'ml · 水分 '+wSum+'ml</span></div>';
+            '<span class="sum">'+dhRight+'</span></div>';
 
     html += '<div class="cols">';
     html += '<div class="col col-c">'+
-              '<div class="col-head"><span>导尿</span><span class="n">'+caths.length+' 次 · '+cSum+'ml</span></div>'+
-              (caths.length ? caths.map(function(e){ return rowCath(e, gapMap[e.id]); }).join('') : '<div class="col-empty">无</div>')+
+              '<div class="col-head"><span>导尿 / 排便</span>'+
+              '<span class="n">'+caths.length+'次 '+cSum+'ml</span></div>'+
+              (left.length ? left.map(function(e){
+                 return e.k==='p' ? rowPoo(e) : rowCath(e, gapMap[e.id]);
+              }).join('') : '<div class="col-empty">无</div>')+
             '</div>';
     html += '<div class="col col-w">'+
               '<div class="col-head"><span>水分</span><span class="n">'+(jtxt.length ? jtxt.join('·') : '0')+'</span></div>'+
@@ -461,6 +495,15 @@ function rowWater(e){
   return '<div class="rec2">'+
       '<span class="rt">'+hm(e.t)+'</span>'+
       '<span class="rv">'+tag+e.v+'<span class="u">ml</span></span>'+
+      '<button class="x" data-del="'+e.id+'">×</button>'+
+    '</div>';
+}
+
+/* 排便：只记时间，右侧显示“排便” */
+function rowPoo(e){
+  return '<div class="rec2 poo">'+
+      '<span class="rt">'+hm(e.t)+'</span>'+
+      '<span class="rv poov">排便</span>'+
       '<button class="x" data-del="'+e.id+'">×</button>'+
     '</div>';
 }
@@ -680,8 +723,8 @@ function buildCsv(){
       if(prev) gap = fmtGap(e.t - prev.t);
       prev = e;
     }
-    var name = e.k === 'c' ? '导尿' : JLIST[jOf(e)];
-    rows.push([ dayKey(e.t), hm(e.t), name, e.v, gap ]);
+    var name = e.k === 'c' ? '导尿' : (e.k === 'p' ? '排便' : JLIST[jOf(e)]);
+    rows.push([ dayKey(e.t), hm(e.t), name, e.k === 'p' ? '' : e.v, gap ]);
   });
   return '\ufeff' + rows.map(function(r){ return r.join(','); }).join('\r\n');
 }
@@ -740,6 +783,12 @@ function exportCsv(){
 
 /* ====== 事件绑定 ====== */
 document.getElementById('btnCath').onclick = function(){ openSheet('c'); };
+
+/* 排便：一键记录当前时间，不需弹层 */
+document.getElementById('btnPoo').onclick = function(){
+  addEntry('p', 0, Date.now(), 'w');
+  toast('已记录排便 ' + hm(Date.now()));
+};
 
 Array.prototype.forEach.call(document.querySelectorAll('[data-w]'), function(b){
   b.onclick = function(){
