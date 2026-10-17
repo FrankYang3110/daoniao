@@ -105,13 +105,16 @@ body{
 .col-head .n{font-variant-numeric:tabular-nums;font-weight:700;font-size:12px;opacity:.75;white-space:nowrap}
 .col-c .col-head{background:#e0e7ff;color:#3730a3}
 .col-w .col-head{background:#cffafe;color:#0e7490}
-.rec2{display:flex;align-items:center;gap:5px;padding:9px 8px;border-radius:8px;
-  border-top:1px solid #f8fafc;min-width:0}
+.rec2{display:grid;grid-template-columns:auto 1fr auto;align-items:center;column-gap:5px;
+  padding:9px 8px;border-radius:8px;border-top:1px solid #f8fafc;min-width:0}
 .rec2 .rt{flex:none;font-size:14.5px;color:#64748b;font-variant-numeric:tabular-nums}
-.rec2 .rv{margin-left:auto;font-weight:800;font-size:17px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rec2 .rv{justify-self:end;font-weight:800;font-size:17px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rec2 .u{font-size:11.5px;font-weight:700;color:#94a3b8;margin-left:1px}
 .rec2 .warnmark{display:inline-block;font-size:10.5px;font-weight:800;color:#dc2626;
   background:#fee2e2;border-radius:4px;padding:1px 3px;margin-left:3px;vertical-align:1.5px}
+.rec2 .warnmark.low{color:#64748b;background:#f1f5f9}
+.rec2 .warnmark.more{color:#b45309;background:#fef3c7}
+.rec2 .warnmark.over{color:#dc2626;background:#fee2e2}
 .rec2 .x{border:0;background:transparent;color:#d7dee8;font-size:19px;line-height:1;
   padding:10px 6px;margin:-10px -2px -10px 0;font-family:inherit;flex:none}
 .rec2 .x:active{color:#ef4444}
@@ -125,9 +128,12 @@ body{
 .dh .sum.w{color:#0e7490}
 
 /* 间隔标记：距上次导尿 */
-.rec2 .gap{display:block;font-size:11.5px;font-weight:700;color:#94a3b8;
-  font-variant-numeric:tabular-nums;line-height:1.25;margin-top:1px}
+.rec2 .gap{display:block;grid-column:1 / -1;font-size:11.5px;font-weight:700;color:#94a3b8;
+  font-variant-numeric:tabular-nums;line-height:1.25;margin-top:1px;white-space:nowrap}
 .rec2 .gap.long{color:#f59e0b}
+.rec2 .gap.over{color:#dc2626}
+.moretxt{color:#b45309;font-weight:700}
+.lowtxt{color:#64748b;font-weight:700}
 
 /* 水分类型小标签 */
 .rec2 .jt{display:inline-block;font-size:10px;font-weight:800;padding:1px 4px;border-radius:4px;
@@ -257,6 +263,12 @@ body{
   .rec2.over{background:#2a1416}
   .rec2.over .rv{color:#fca5a5}
   .rec2 .warnmark{background:#3f1414;color:#fca5a5}
+  .rec2 .warnmark.low{background:#1e293b;color:#94a3b8}
+  .rec2 .warnmark.more{background:#3d2f0f;color:#fcd34d}
+  .rec2 .warnmark.over{background:#3f1414;color:#fca5a5}
+  .rec2 .gap.over{color:#fca5a5}
+  .moretxt{color:#fcd34d}
+  .lowtxt{color:#94a3b8}
   .rec2.poo{background:#241d12}
   .rec2 .poov{color:#e0b877}
   .col-c .col-head{background:#1e1b4b;color:#c7d2fe}
@@ -360,8 +372,18 @@ body{
 
 /* ====== 参数：要改只改这里 ====== */
 var CFG = {
-  MAX_ML   : 400,   // 单次导尿「红色」安全线：400ml 及以上算过多
-  MORE_X   : 1.5,   // 超过个人中位数的倍数 → 灰字「较多」（不标红）
+  /* ===== 按年龄算「预计膀胱容量」EBC：30 × (年龄 + 1) ml =====
+     5 岁 ≈ 180 ml。单次导尿量拿它当上限，不再用成人 400 ml。
+     填了生日就按生日自动长一岁；留空则用 AGE_Y。 */
+  BIRTH    : '',    // 'YYYY-MM-DD'，可留空
+  AGE_Y    : 5,     // 没填生日时的年龄（岁）
+  VOL_LOW  : 1/3,   // 低于 EBC 的 1/3 → 偏少（60 ml）
+  VOL_HIGH : 1,     // 高于 EBC → 偏多（180 ml，黄）
+  VOL_HARD : 1.2,   // 高于 1.2×EBC → 超量（216 ml，红）
+  GAP_SHORT: 2,     // 小时：短于 → 偏短
+  GAP_LONG : 4,     // 小时：长于 → 偏长（黄）
+  GAP_OVER : 5,     // 小时：长于 → 过长（红）
+  MORE_X   : 1.5,   // （旧）超过个人中位数的倍数；保留兼容
   BASE_DAYS: 14,    // 个人基线统计窗口（天）
   BASE_MIN : 5,     // 至少有 5 个间隔样本才启用个人基线
   GAP_WARN : 1.3,   // 超过个人中位间隔 1.3 倍 → 偏久
@@ -462,6 +484,46 @@ function computeBaseline(){
   return CUR;
 }
 
+/* ====== 年龄 → 预计膀胱容量（EBC）======
+   ICCS 常用：EBC(ml) = 30 × (年龄 + 1)，4–12 岁适用。
+   5 岁 = 180 ml。个体差异 ±30 ml，最终以尿动力学「安全容量」为准。 */
+function ageYears(){
+  if(CFG.BIRTH){
+    var b = new Date(CFG.BIRTH);
+    if(!isNaN(b.getTime())){
+      var n = new Date(), y = n.getFullYear() - b.getFullYear();
+      if(n.getMonth() < b.getMonth() ||
+         (n.getMonth() === b.getMonth() && n.getDate() < b.getDate())) y--;
+      if(y >= 1 && y <= 18) return y;
+    }
+  }
+  return CFG.AGE_Y;
+}
+function ebcMl(){ return 30 * (ageYears() + 1); }
+function volLine(){
+  var e = ebcMl();
+  return { low: Math.round(e*CFG.VOL_LOW), high: Math.round(e*CFG.VOL_HIGH), hard: Math.round(e*CFG.VOL_HARD) };
+}
+
+/* 单次导尿量：<1/3 EBC 偏少，1/3–1 EBC 合适，1–1.2 偏多，>1.2 超量 */
+function assessVol(v){
+  var L = volLine();
+  if(v <= 0)       return { k:'', t:'' };
+  if(v < L.low)    return { k:'low',  t:'偏少' };
+  if(v > L.hard)   return { k:'over', t:'超量' };
+  if(v > L.high)   return { k:'more', t:'偏多' };
+  return { k:'ok', t:'' };
+}
+
+/* 间隔：<2h 偏短，2–4h 适中，4–5h 偏长，>5h 过长（夜间不判） */
+function assessGap(ms){
+  var h = ms/3600000;
+  if(h < CFG.GAP_SHORT) return { k:'short', t:'偏短' };
+  if(h > CFG.GAP_OVER)  return { k:'over',  t:'过长' };
+  if(h > CFG.GAP_LONG)  return { k:'long',  t:'偏长' };
+  return { k:'ok', t:'' };
+}
+
 /* 水分类型（兼容旧记录：无 j 字段视为喝水） */
 function jOf(e){
   if(e.k !== 'w') return '';
@@ -557,11 +619,18 @@ function renderStatus(){
   }
 
   /* 今日汇总（次要信息压成一行，明细在列表里看） */
-  var tk = dayKey(now), cN=0, cSum=0, wSum=0, over=0, pN=0, nightN=0;
+  var tk = dayKey(now), cN=0, cSum=0, wSum=0, over=0, more=0, low=0, pN=0, nightN=0;
   for(var i=0;i<data.length;i++){
     var e = data[i];
     if(dayKey(e.t) !== tk) continue;
-    if(e.k === 'c'){ cN++; cSum += e.v; if(e.v >= CFG.MAX_ML) over++; if(isNight(e.t)) nightN++; }
+    if(e.k === 'c'){
+      cN++; cSum += e.v;
+      var av = assessVol(e.v);
+      if(av.k === 'over') over++;
+      else if(av.k === 'more') more++;
+      else if(av.k === 'low') low++;
+      if(isNight(e.t)) nightN++;
+    }
     else if(e.k === 'p'){ pN++; }
     else { wSum += e.v; }
   }
@@ -573,7 +642,10 @@ function renderStatus(){
       '<span class="it">水分 <b>'+wSum+'</b> ml</span>'+
       (pN > 0 ? '<span class="it">排便 <b>'+pN+'</b> 次</span>' : '')+
     '</div>';
-    if(over > 0) line += '<br><span class="over">⚠ 有 '+over+' 次达到 '+CFG.MAX_ML+' ml 以上</span>';
+    var L = volLine();
+    if(over > 0) line += '<br><span class="over">⚠ 有 '+over+' 次超量（&gt;'+L.hard+' ml）</span>';
+    else if(more > 0) line += '<br><span class="moretxt">有 '+more+' 次偏多（&gt;'+L.high+' ml）</span>';
+    if(low > 0 && low === cN) line += '<br><span class="lowtxt">今天每次量都偏少（&lt;'+L.low+' ml）</span>';
   }
   document.getElementById('todayLine').innerHTML = line;
 }
@@ -653,21 +725,21 @@ function renderList(){
 }
 
 function rowCath(e, gapMs){
-  var over = e.v >= CFG.MAX_ML;
-  var more = !over && CUR.volMed > 0 && e.v > CUR.volMed*CFG.MORE_X;
+  var av = assessVol(e.v);
+  var night = isNight(e.t) ? '<span class="nightmark">夜</span>' : '';
   var gap = '';
   if(gapMs != null){
-    var longCls = gapMs > CUR.gapMs*CFG.GAP_LATE ? ' long' : '';
-    gap = '<span class="gap'+longCls+'">+' + fmtGap(gapMs) + '</span>';
+    var ag = isNight(e.t) ? {k:'', t:''} : assessGap(gapMs);
+    gap = '<span class="gap'+(ag.k ? ' '+ag.k : '')+'">+' + fmtGap(gapMs) +
+          (ag.t ? ' · '+ag.t : '') + '</span>';
   }
-  var night = isNight(e.t) ? '<span class="nightmark">夜</span>' : '';
-  return '<div class="rec2'+(over?' over':'')+'" data-edit="'+e.id+'">'+
-      '<span class="rt">'+night+hm(e.t)+gap+'</span>'+
+  return '<div class="rec2'+(av.k==='over'?' over':'')+'" data-edit="'+e.id+'">'+
+      '<span class="rt">'+night+hm(e.t)+'</span>'+
       '<span class="rv">'+e.v+'<span class="u">ml</span>'+
-        (over ? '<span class="warnmark">偏多</span>'
-              : (more ? '<span class="moremark">较多</span>' : ''))+
+        (av.t ? '<span class="warnmark '+av.k+'">'+av.t+'</span>' : '')+
       '</span>'+
       '<button class="x" data-del="'+e.id+'">×</button>'+
+      gap +
     '</div>';
 }
 
@@ -810,7 +882,7 @@ function markPicker(){
   var items = wrap.querySelectorAll('.pitem[data-v]');
   for(var i=0;i<items.length;i++){
     var on = i === picker.idx;
-    items[i].className = 'pitem' + (on ? ' sel' : '') + (on && picker.values[i] > CFG.MAX_ML && sheetKind==='c' ? ' over' : '');
+    items[i].className = 'pitem' + (on ? ' sel' : '') + (on && picker.values[i] > volLine().hard && sheetKind==='c' ? ' over' : '');
   }
 }
 
@@ -976,10 +1048,13 @@ function confirmSheet(){
     toast('已撤销');
   };
 
-  if(kind === 'c' && v >= CFG.MAX_ML){
-    toast('已记录 ' + v + ' ml，已达到 ' + CFG.MAX_ML + ' ml 安全线', true, undo);
-  }else if(kind === 'c'){
-    toast('已记录导尿 ' + v + ' ml', false, undo);
+  if(kind === 'c'){
+    var av = assessVol(v), L = volLine();
+    var msg = '已记录导尿 ' + v + ' ml';
+    if(av.k === 'over')      msg += '，超量（上限 '+L.hard+' ml）';
+    else if(av.k === 'more') msg += '，偏多（上限 '+L.high+' ml）';
+    else if(av.k === 'low')  msg += '，偏少';
+    toast(msg, av.k === 'over', undo);
   }else{
     toast('已记录' + JLIST[j] + ' ' + v + ' ml', false, undo);
   }
@@ -1237,6 +1312,8 @@ if('serviceWorker' in navigator && location.protocol.indexOf('http') === 0){
 /* ====== 自测钩子（tests/selftest.html 用，不影响正常功能） ====== */
 window.DN = {
   CFG: CFG, CUR: CUR, median: median, computeBaseline: computeBaseline,
+  ageYears: ageYears, ebcMl: ebcMl, volLine: volLine,
+  assessVol: assessVol, assessGap: assessGap,
   dayKey: dayKey, hm: hm, dateValue: dateValue, readWhen: readWhen,
   fmtGap: fmtGap, fmtDur: fmtDur, buildCsv: buildCsv,
   buildBackup: buildBackup, parseBackup: parseBackup, isNight: isNight,

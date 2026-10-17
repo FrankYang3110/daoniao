@@ -1,6 +1,6 @@
 /* 离线缓存：缓存优先（纯离线应用，首屏不等网络）
    注意：改了 index.html 后要把 CACHE 版本号 +1，用户下次打开才会拿到新文件 */
-var CACHE = 'daoniao-v2';
+var CACHE = 'daoniao-v3';
 var ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function(e){

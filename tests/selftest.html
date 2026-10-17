@@ -124,9 +124,44 @@ function run(w){
     ok('首页渲染不抛异常', false, e.message);
   }
 
-  /* --- 阈值语义 --- */
-  eq('红色安全线 400', D.CFG.MAX_ML, 400);
+  /* --- 阈值语义（按年龄，不再是成人 400ml） --- */
+  eq('年龄 5 岁', D.ageYears(), 5);
+  eq('EBC = 30×(5+1) = 180', D.ebcMl(), 180);
+  var L = D.volLine();
+  eq('单次量下限 60', L.low, 60);
+  eq('单次量上限 180', L.high, 180);
+  eq('单次量红线 216', L.hard, 216);
+
+  eq('59ml → 偏少', D.assessVol(59).k, 'low');
+  eq('60ml → 合适', D.assessVol(60).k, 'ok');
+  eq('180ml → 合适（到上限不算超）', D.assessVol(180).k, 'ok');
+  eq('181ml → 偏多', D.assessVol(181).k, 'more');
+  eq('217ml → 超量', D.assessVol(217).k, 'over');
+  eq('0ml → 不判', D.assessVol(0).k, '');
+
+  eq('1h59m → 偏短', D.assessGap(119*60000).k, 'short');
+  eq('2h → 适中', D.assessGap(2*3600000).k, 'ok');
+  eq('3h30m → 适中', D.assessGap(3.5*3600000).k, 'ok');
+  eq('4h01m → 偏长', D.assessGap(4.02*3600000).k, 'long');
+  eq('5h01m → 过长', D.assessGap(5.02*3600000).k, 'over');
   eq('可录入上限 800', D.CFG.MAX_CATH, 800);
+
+  /* --- 列表与今日汇总里的三档标记 --- */
+  var d0 = new Date(); d0.setHours(12,0,0,0);
+  var t0 = d0.getTime();
+  D.setData([
+    { id:'a1', t: t0 - 6*3600000, k:'c', v: 50  },
+    { id:'a2', t: t0 - 3*3600000, k:'c', v: 150 },
+    { id:'a3', t: t0 - 0.5*3600000, k:'c', v: 230 },
+    { id:'a4', t: t0 - 0.1*3600000, k:'c', v: 120 }
+  ], true);
+  var lhtml = doc.getElementById('list').innerHTML;
+  ok('列表：偏少标记', lhtml.indexOf('偏少') >= 0);
+  ok('列表：偏短标记', lhtml.indexOf('偏短') >= 0);
+  ok('列表：超量标记', lhtml.indexOf('超量') >= 0);
+  ok('列表：超量行标红', lhtml.indexOf('rec2 over') >= 0);
+  ok('今日汇总：提示超量', doc.getElementById('todayLine').innerHTML.indexOf('超量') >= 0,
+     doc.getElementById('todayLine').innerHTML);
 
   /* --- 一键记录 + 撤销（端到端） --- */
   D.setData([], true);
