@@ -122,6 +122,63 @@ function run(w){
     ok('列表渲染：可点击编辑行', doc.getElementById('list').innerHTML.indexOf('data-edit=') >= 0);
     ok('底部悬浮主按钮存在', !!doc.querySelector('.dock'));
     ok('顶部按钮行已移除', !doc.querySelector('.main-row'));
+
+    /* --- 三列布局 --- */
+    var firstRow = doc.querySelector('.tr');
+    ok('记录行是三列 + 说明', !!firstRow && firstRow.children.length >= 3);
+    ok('第一列是时间', firstRow && firstRow.querySelector('.c1') &&
+       /^\d{2}:\d{2}$/.test(firstRow.querySelector('.c1').textContent.replace('夜','').trim()));
+    ok('第二列是事件', firstRow && firstRow.querySelector('.c2'));
+    ok('第三列是数量', firstRow && firstRow.querySelector('.c3'));
+    ok('日头可折叠（data-day）', !!doc.querySelector('.dh[data-day]'));
+    ok('不再是左右双列', !doc.querySelector('.cols'));
+
+    /* --- 筛选标签（自备数据，不依赖前面的用例）--- */
+    ok('筛选标签存在', !!doc.querySelector('#segFilter'));
+
+    var fb = new Date(); fb.setHours(12,0,0,0);
+    var FT = fb.getTime(), FH = 3600000;
+    D.setData([
+      { id:'f1', t: FT - 6*FH, k:'c', v: 150 },
+      { id:'f2', t: FT - 5*FH, k:'w', v: 100 },
+      { id:'f3', t: FT - 4*FH, k:'w', v: 200, j:'s' },
+      { id:'f4', t: FT - 3*FH, k:'c', v: 170 },
+      { id:'f5', t: FT - 2*FH, k:'w', v: 150, j:'p' },
+      { id:'f6', t: FT - 1*FH, k:'p', v: 0 }
+    ], true);
+
+    doc.querySelector('[data-f="c"]').click();
+    var onlyC = doc.querySelectorAll('.tr');
+    var allCath = true;
+    for(var q=0;q<onlyC.length;q++){
+      var evs = onlyC[q].querySelector('.c2').textContent;
+      if(['导尿','排便'].indexOf(evs) < 0) allCath = false;
+    }
+    ok('筛选导尿后只留导尿/排便', allCath && onlyC.length === 3,
+       onlyC.length + ' 行：' + Array.prototype.map.call(onlyC, function(r){
+         return r.querySelector('.c2').textContent;
+       }).join(','));
+
+    doc.querySelector('[data-f="w"]').click();
+    var onlyW = doc.querySelectorAll('.tr');
+    var allWater = true;
+    for(var q2=0;q2<onlyW.length;q2++){
+      var ev2 = onlyW[q2].querySelector('.c2').textContent;
+      if(['喝水','喝汤','喝粥'].indexOf(ev2) < 0) allWater = false;
+    }
+    ok('筛选饮水后只留水/汤/粥', allWater && onlyW.length === 3,
+       onlyW.length + ' 行：' + Array.prototype.map.call(onlyW, function(r){
+         return r.querySelector('.c2').textContent;
+       }).join(','));
+    doc.querySelector('[data-f="all"]').click();
+
+    /* --- 折叠 --- */
+    var dh0 = doc.querySelector('.dh[data-day]');
+    dh0.click();
+    ok('点日期后折叠', dh0.className.indexOf('closed') >= 0);
+    dh0.click();
+    ok('再点日期后展开', dh0.className.indexOf('closed') < 0);
+
     ok('副标题给出预计时间', D.isNight(Date.now())
       ? info.indexOf('预计') < 0        /* 夜间按设计不催，不应出现「预计」 */
       : info.indexOf('预计') > 0,
@@ -171,11 +228,38 @@ function run(w){
   ok('列表：偏少标记', lhtml.indexOf('偏少') >= 0);
   ok('列表：偏短标记', lhtml.indexOf('偏短') >= 0);
   ok('列表：超量标记', lhtml.indexOf('超量') >= 0);
-  ok('列表：超量行标红', lhtml.indexOf('rec2 over') >= 0);
+  ok('列表：超量行标红', lhtml.indexOf('ev-c over') >= 0, '找不到 tr 的 over 类');
   ok('今日汇总：提示超量', doc.getElementById('todayLine').innerHTML.indexOf('超量') >= 0,
      doc.getElementById('todayLine').innerHTML);
 
-  /* --- 一键记录 + 撤销（端到端） --- */
+  /* --- 区间饮水：只看两次导尿之间的累计 --- */
+  var b0 = new Date(); b0.setHours(12,0,0,0);
+  var B = b0.getTime(), HH = 3600000;
+  D.setData([
+    { id:'c1', t: B - 10*HH, k:'c', v: 150 },
+    { id:'w1', t: B - 9*HH,  k:'w', v: 100 },   /* 在第1��第2次导尿之间 */
+    { id:'w2', t: B - 8*HH,  k:'w', v: 200, j:'s' },
+    { id:'c2', t: B - 6*HH,  k:'c', v: 160 },   /* 区间内共 300 */
+    { id:'w3', t: B - 5*HH,  k:'w', v: 180 },   /* 在第2、第3次之间 */
+    { id:'c3', t: B - 3*HH,  k:'c', v: 140 },   /* 区间内共 180 */
+    { id:'w4', t: B - 1*HH,  k:'w', v: 300 }    /* 第3次之后，不计入任何导尿行 */
+  ], true);
+  var lh = doc.getElementById('list').innerHTML;
+  ok('导尿行显示「期间饮水」', lh.indexOf('期间饮水') >= 0);
+  ok('第2次导尿区间饮水 300', lh.indexOf('期间饮水 300ml') >= 0);
+  ok('第3次导尿区间饮水 180', lh.indexOf('期间饮水 180ml') >= 0);
+  ok('首次导尿无区间饮水（无前一条）', (lh.match(/期间饮水/g) || []).length === 2, (lh.match(/期间饮水/g)||[]).length);
+
+  /* --- 饮水行：当日累计 --- */
+  ok('饮水行显示「当日」', lh.indexOf('当日 ') >= 0);
+  ok('最后一杯当日累计 = 100+200+180+300 = 780', lh.indexOf('当日 780ml') >= 0);
+
+  /* --- 顶部状态卡：距上次饮水 --- */
+  var info2 = doc.getElementById('lastInfo').textContent;
+  ok('顶部显示距上次饮水', info2.indexOf('距上次饮水') >= 0, info2);
+  ok('距上次饮水不参与超时提醒', doc.getElementById('badge').textContent !== undefined);
+
+  /* --- 原有：一键记录 + 撤销 --- */
   D.setData([], true);
   doc.getElementById('btnPoo').click();
   eq('一键记排便：+1 条', D.getData().length, 1);

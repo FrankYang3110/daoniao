@@ -212,6 +212,111 @@ public class MainActivity extends Activity {
             return saveFile(fileName, "text/csv", base64);
         }
 
+        /* ===== 备份清单：App 内部目录里保存过的备份 ===== */
+
+        private File backupDir() {
+            File d = new File(getFilesDir(), "backup");
+            if (!d.exists()) d.mkdirs();
+            return d;
+        }
+
+        /**
+         * 写入内部备份（不靠存储权限、不会被系统清理）。
+         * 同时再往「下载/导尿记录」写一份，方便用户取走。
+         */
+        @JavascriptInterface
+        public boolean saveBackup(String fileName, String base64) {
+            try {
+                byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+                File f = new File(backupDir(), fileName);
+                FileOutputStream fos = new FileOutputStream(f);
+                fos.write(bytes);
+                fos.flush();
+                fos.close();
+
+                /* 只留最近 20 份，避免占空间 */
+                File[] all = backupDir().listFiles();
+                if (all != null && all.length > 20) {
+                    java.util.Arrays.sort(all, new java.util.Comparator<File>() {
+                        @Override
+                        public int compare(File a, File b) {
+                            return Long.compare(a.lastModified(), b.lastModified());
+                        }
+                    });
+                    for (int i = 0; i < all.length - 20; i++) all[i].delete();
+                }
+
+                /* 请用户可见的一份（Android 10+ 无权限可写） */
+                try {
+                    if (!needStoragePermission()) {
+                        doSaveQuiet(fileName, base64, "application/json");
+                    }
+                } catch (Exception ignored) {
+                }
+
+                toastLong("已备份：" + fileName);
+                return true;
+            } catch (Exception e) {
+                toastLong("备份失败：" + e.getMessage());
+                return false;
+            }
+        }
+
+        /** 列出内部备份，JSON 数组：[{name,size,time}]，新的在前 */
+        @JavascriptInterface
+        public String listBackups() {
+            StringBuilder sb = new StringBuilder("[");
+            File[] all = backupDir().listFiles();
+            if (all != null) {
+                java.util.Arrays.sort(all, new java.util.Comparator<File>() {
+                    @Override
+                    public int compare(File a, File b) {
+                        return Long.compare(b.lastModified(), a.lastModified());
+                    }
+                });
+                boolean first = true;
+                for (File f : all) {
+                    if (!f.getName().toLowerCase().endsWith(".json")) continue;
+                    if (!first) sb.append(',');
+                    first = false;
+                    sb.append("{\"name\":\"")
+                      .append(f.getName().replace("\\", "\\\\").replace("\"", "\\\""))
+                      .append("\",\"size\":").append(f.length())
+                      .append(",\"time\":").append(f.lastModified())
+                      .append('}');
+                }
+            }
+            sb.append(']');
+            return sb.toString();
+        }
+
+        /** 读取内部备份内容，失败返回空字符串 */
+        @JavascriptInterface
+        public String readBackup(String fileName) {
+            try {
+                File f = new File(backupDir(), fileName);
+                if (!f.exists() || !f.isFile()) return "";
+                java.io.FileInputStream in = new java.io.FileInputStream(f);
+                byte[] buf = new byte[(int) f.length()];
+                int off = 0, n;
+                while (off < buf.length && (n = in.read(buf, off, buf.length - off)) > 0) off += n;
+                in.close();
+                return new String(buf, 0, off, "UTF-8");
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        /** 删除内部备份 */
+        @JavascriptInterface
+        public boolean deleteBackup(String fileName) {
+            try {
+                return new File(backupDir(), fileName).delete();
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
         /** 网页调用：写文件到「下载/导尿记录/」。mime：text/csv 或 application/json */
         @JavascriptInterface
         public boolean saveFile(String fileName, String mime, String base64) {
@@ -286,6 +391,40 @@ public class MainActivity extends Activity {
             return true;
         } catch (Exception e) {
             toastLong("保存失败：" + e.getMessage());
+            return false;
+        }
+    }
+
+    /** 静默写入「下载/导尿记录/」，失败不弹 Toast（用于备份时附带一份可见副本） */
+    private boolean doSaveQuiet(String fileName, String base64, String mime) {
+        try {
+            byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues cv = new ContentValues();
+                cv.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+                cv.put(MediaStore.MediaColumns.MIME_TYPE,
+                        mime == null ? "application/octet-stream" : mime);
+                cv.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                        Environment.DIRECTORY_DOWNLOADS + "/导尿记录");
+                Uri uri = getContentResolver()
+                        .insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                if (uri == null) return false;
+                OutputStream os = getContentResolver().openOutputStream(uri);
+                if (os == null) return false;
+                os.write(bytes);
+                os.flush();
+                os.close();
+                return true;
+            }
+            File dir = new File(Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS), "导尿记录");
+            if (!dir.exists() && !dir.mkdirs()) return false;
+            FileOutputStream fos = new FileOutputStream(new File(dir, fileName));
+            fos.write(bytes);
+            fos.flush();
+            fos.close();
+            return true;
+        } catch (Exception e) {
             return false;
         }
     }
