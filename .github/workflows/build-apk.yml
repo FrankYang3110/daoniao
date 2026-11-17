@@ -40,7 +40,7 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: gradle assembleDebug --no-daemon --stacktrace -PverCode=${{ github.run_number }} -PverName=1.0.${{ github.run_number }}
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Rename artifact
         run: |
