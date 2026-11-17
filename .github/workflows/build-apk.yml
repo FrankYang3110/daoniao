@@ -38,6 +38,13 @@ jobs:
           path: ~/.android/debug.keystore
           key: daoniao-debug-keystore-v1
 
+      - name: Stamp version
+        working-directory: android
+        run: |
+          N=${{ github.run_number }}
+          sed -i -E "s/versionCode [0-9]+/versionCode $N/; s/versionName \"[^\"]+\"/versionName \"1.0.$N\"/" app/build.gradle
+          grep -n "versionCode\|versionName" app/build.gradle
+
       - name: Build APK
         working-directory: android
         run: gradle assembleDebug --no-daemon --stacktrace
