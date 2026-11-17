@@ -39,8 +39,19 @@ jobs:
       - name: Restore debug keystore
         uses: actions/cache@v4
         with:
-          path: /home/runner/.android/debug.keystore
-          key: daoniao-debug-keystore-v1
+          path: android/daoniao-debug.keystore
+          key: daoniao-keystore-v2
+
+      - name: Ensure debug keystore
+        run: |
+          KS=android/daoniao-debug.keystore
+          if [ ! -f "$KS" ]; then
+            keytool -genkeypair -keystore "$KS"               -alias androiddebugkey -storepass android -keypass android               -dname "CN=Android Debug,O=Android,C=US"               -keyalg RSA -keysize 2048 -validity 10000
+            echo ">> 新生成了 keystore（首个带缓存的构建）"
+          else
+            echo ">> 复用缓存里的 keystore"
+          fi
+          keytool -list -v -keystore "$KS" -storepass android | grep -E "Alias name|SHA256:" 
 
       - name: Stamp version
         working-directory: android
@@ -51,12 +62,9 @@ jobs:
 
       - name: Build APK
         working-directory: android
+        env:
+          DEBUG_KEYSTORE: ${{ github.workspace }}/android/daoniao-debug.keystore
         run: gradle assembleDebug --no-daemon --stacktrace
-
-      - name: Keystore fingerprint
-        run: |
-          ls -l /home/runner/.android/debug.keystore || echo "no keystore"
-          keytool -list -keystore /home/runner/.android/debug.keystore -storepass android 2>/dev/null | grep -E "SHA256|Certificate fingerprint" || true
 
       - name: Rename artifact
         run: |
