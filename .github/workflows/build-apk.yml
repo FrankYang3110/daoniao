@@ -30,10 +30,17 @@ jobs:
         run: |
           cp index.html android/app/src/main/assets/www/index.html
           cp manifest.webmanifest android/app/src/main/assets/www/manifest.webmanifest
+          cp icon-180.png icon-192.png icon-512.png android/app/src/main/assets/www/
           echo "synced:"; ls -la android/app/src/main/assets/www/
+      - name: Restore debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: daoniao-debug-keystore-v1
+
       - name: Build APK
         working-directory: android
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: gradle assembleDebug --no-daemon --stacktrace -PverCode=${{ github.run_number }} -PverName=1.0.${{ github.run_number }}
 
       - name: Rename artifact
         run: |
@@ -58,13 +65,18 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: 导尿记录 v1.0.${{ github.run_number }}
           body: |
-            安卓离线版「导尿记录」。
+            安卓离线版「导尿记录」v1.0.${{ github.run_number }}。
 
-            - 单次导尿超 180 ml 标红提醒
-            - 白天间隔超 3 小时提醒，夜间（22:00-06:00）不打扰
-            - 记录导尿时间、尿量、饮水量，按天汇总出入量
-            - 一键导出 CSV 到「下载/导尿记录」文件夹
-            - 完全离线，无网络权限，数据只存本机
+            本次更新
+            - 记录按月、按天两级折叠，默认只展开当月和今天
+            - 不再只显示最近 800 条，全部历史都能看到（按月分页加载）
+            - 新增「复诊简报」：近 7 天 / 30 天 / 全部，一键复制成文字发给医生
+            - 新增「设置」：女儿生日、夜间时段、超量红线、默认量都能改
+            - 隔夜那一泡不再误报「间隔过长」
+            - 长按水分按钮可记「喝汤 / 喝粥」
+            - 导出 CSV 增加间隔、期间饮水、当日累计三列
+            - 每次导出自动留一份备份在 App 内，每天自动备份一次
+            - 记号/删除都可以撤销，误点不怕
 
             下载下方 `daoniao-*.apk` 安装即可。
           files: out/*.apk

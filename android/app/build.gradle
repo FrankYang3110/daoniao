@@ -8,8 +8,8 @@ android {
         applicationId "com.frank.daoniao"
         minSdk 22
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode (project.findProperty('verCode') ?: '1').toInteger()
+        versionName (project.findProperty('verName') ?: "1.0")
     }
 
     buildTypes {

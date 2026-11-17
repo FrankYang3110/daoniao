@@ -21,8 +21,9 @@ function near(name, a, b, tol){ ok(name, Math.abs(a - b) <= (tol || 1), a + ' vs
 function run(w){
   var D = w.DN;
   /* 测试会触发一次 save()，结束前把真实数据放回去 */
-  var saved = null;
+  var saved = null, savedUI = null;
   try{ saved = w.localStorage.getItem('cathlog_v1'); }catch(e){}
+  try{ savedUI = w.localStorage.getItem('cathlog_ui_v1'); }catch(e){}
   ok('DN 已注入', !!D);
   if(!D) return;
 
@@ -84,8 +85,9 @@ function run(w){
   /* --- CSV --- */
   var csv = D.buildCsv();
   ok('CSV 有 BOM', csv.charCodeAt(0) === 0xFEFF);
-  eq('CSV 表头', csv.split('\r\n')[0], '\ufeff日期,时间,事件,量(ml),距上次同类型');
+  eq('CSV 表头', csv.split('\r\n')[0], '\ufeff日期,时间,事件,量(ml),间隔(分钟),期间饮水(ml),当日累计饮水(ml)');
   eq('CSV 行数 = 记录数+表头', csv.trim().split('\r\n').length, 4);
+  eq('CSV 列数 = 7', csv.trim().split('\r\n')[0].split(',').length, 7);
 
   /* --- CSV 转义（RFC 4180） --- */
   eq('csvCell 普通', D.csvCell('导尿'), '导尿');
@@ -172,12 +174,30 @@ function run(w){
        }).join(','));
     doc.querySelector('[data-f="all"]').click();
 
-    /* --- 折叠 --- */
+    /* --- 折叠：日 --- */
+    var tdk = D.dayKey(Date.now());
     var dh0 = doc.querySelector('.dh[data-day]');
+    var wasOpen = !D.dClosedNow(tdk);
     dh0.click();
-    ok('点日期后折叠', dh0.className.indexOf('closed') >= 0);
-    dh0.click();
-    ok('再点日期后展开', dh0.className.indexOf('closed') < 0);
+    ok('点日期后折叠状态取反', D.dClosedNow(tdk) === wasOpen);
+    doc.querySelector('.dh[data-day]').click();
+    ok('再点日期后状态复原', D.dClosedNow(tdk) === !wasOpen);
+
+    /* --- 折叠：月（两层）--- */
+    var tmk = D.monthKey(Date.now());
+    ok('当月默认展开', D.mClosedNow(tmk) === false);
+    var lastMk = Math.max.apply(null, D.getData().map(function(r){ return r.t; }));
+    var mh0 = doc.querySelector('.mh[data-month]');
+    ok('月头存在（data-month）', !!mh0);
+    ok('月头文字是 X年X月', !!mh0 && /^\d{4}年\d{1,2}月$/.test(mh0.querySelector('.mf').textContent.replace('▼','').trim()),
+       mh0 && mh0.querySelector('.mf').textContent);
+    mh0.click();
+    ok('点月份后折叠', D.mClosedNow(tmk) === true);
+    ok('折叠后月体跟着收起（class）', doc.querySelector('.mh[data-month]').className.indexOf('closed') >= 0);
+    doc.querySelector('.mh[data-month]').click();
+    ok('再点月份后展开', D.mClosedNow(tmk) === false);
+    ok('跨月：往月默认折叠', D.mClosedNow('2020-01') === true);
+    ok('跨日：往日默认折叠', D.dClosedNow('2020-01-01') === true);
 
     ok('副标题给出预计时间', D.isNight(Date.now())
       ? info.indexOf('预计') < 0        /* 夜间按设计不催，不应出现「预计」 */
@@ -279,7 +299,95 @@ function run(w){
   D.hideToast();
   eq('回归结束无残留记录', D.getData().length, 1);   /* 上面新增的 1 条仍在 */
 
-  /* 还原真实数据 */
+  /* ===== 新增：跨夜间隔 / 饮水显示 / 简报 / 两级折叠 / 上限 ===== */
+
+  /* --- 跨夜：22:30 → 09:00 不应被标「过长」 --- */
+  var t9 = new Date(); t9.setHours(9,0,0,0);
+  var pn = new Date(); pn.setDate(pn.getDate()-1); pn.setHours(22,30,0,0);
+  D.setData([
+    { id:'n1', t: pn.getTime(), k:'c', v:150 },
+    { id:'n2', t: t9.getTime(), k:'c', v:150 }
+  ], true);
+  var lhn = doc.getElementById('list').innerHTML;
+  ok('跨夜 10h30min 不标过长', lhn.indexOf('过长') < 0, lhn.slice(0, 260));
+  ok('跨夜仍显示间隔数字', lhn.indexOf('间隔 10h30min') >= 0,
+     (lhn.match(/间隔 [^<]*/) || [''])[0]);
+
+  /* --- 白天 6h 仍正常标过长 --- */
+  var t15 = new Date(); t15.setHours(15,0,0,0);
+  D.setData([
+    { id:'y1', t: t15.getTime() - 6*3600000, k:'c', v:150 },
+    { id:'y2', t: t15.getTime(), k:'c', v:150 }
+  ], true);
+  ok('白天 6h 仍标过长', doc.getElementById('list').innerHTML.indexOf('过长') >= 0);
+
+  /* --- 跨天但不在夜间时段（昨 19:00 → 今 07:45）也不判 --- */
+  var t745 = new Date(); t745.setHours(7,45,0,0);
+  var t19 = new Date(); t19.setDate(t19.getDate()-1); t19.setHours(19,0,0,0);
+  D.setData([
+    { id:'c19',  t: t19.getTime(),  k:'c', v:150 },
+    { id:'c745', t: t745.getTime(), k:'c', v:150 }
+  ], true);
+  var lh3 = doc.getElementById('list').innerHTML;
+  ok('跨天（19:00→07:45）不标过长', lh3.indexOf('过长') < 0, lh3.slice(0, 240));
+
+  /* --- 只有饮水、没有导尿时，顶部也要显示饮水 --- */
+  D.setData([{ id:'w9', t: Date.now() - 3600000, k:'w', v:100 }], true);
+  var infNothing = doc.getElementById('lastInfo').textContent;
+  ok('无导尿时也显示饮水', infNothing.indexOf('距上次饮水') >= 0, infNothing);
+  ok('无导尿时提示先去记导尿', infNothing.indexOf('还没有导尿记录') >= 0, infNothing);
+
+  /* --- 复诊简报 --- */
+  var rNow = Date.now();
+  D.setData([
+    { id:'r1', t: rNow - 50*3600000, k:'c', v:230 },
+    { id:'r2', t: rNow - 47*3600000, k:'c', v:150 },
+    { id:'r3', t: rNow - 20*3600000, k:'w', v:200 }
+  ], true);
+  var rep = D.buildReport(7);
+  ok('简报含「概况」', rep.html.indexOf('概况') >= 0);
+  ok('简报标出超量次数', rep.html.indexOf('超量') >= 0, rep.html.slice(0, 300));
+  ok('简报关键数字加粗', rep.html.indexOf('<b>') >= 0);
+  ok('简报文字版可直接发微信', rep.text.indexOf('导尿：共') >= 0, rep.text.slice(0, 100));
+  var s7 = D.repStats(7);
+  eq('简报统计：7 天内 2 次导尿', s7.n, 2);
+  eq('简报统计：1 次超量', s7.over, 1);
+  ok('30 天口径不报错', D.buildReport(30).html.length > 0);
+  ok('全部口径不报错', D.buildReport(0).html.length > 0);
+
+  /* --- 跨月分组 --- */
+  D.setData([
+    { id:'m1', t: new Date(2026, 9, 15, 10, 0).getTime(), k:'c', v:150 },
+    { id:'m2', t: new Date(2026, 10, 15, 10, 0).getTime(), k:'c', v:150 }
+  ], true);
+  eq('跨月 → 2 个月头', doc.querySelectorAll('.mh[data-month]').length, 2);
+  ok('界面状态已落盘', !!w.localStorage.getItem('cathlog_ui_v1'),
+     w.localStorage.getItem('cathlog_ui_v1'));
+
+  /* --- 解除 800 条上限 --- */
+  var many = [], mn0 = Date.now();
+  for(var gi=0; gi<900; gi++){ many.push({ id:'g'+gi, t: mn0 - (900-gi)*60000, k:'c', v:150 }); }
+  D.setData(many, true);
+  eq('900 条全部渲染（不再截 800）', doc.querySelectorAll('.tr').length, 900);
+
+  /* --- 分页：默认 6 个月 + 加载更早 --- */
+  var mm = [];
+  for(var mi=0; mi<8; mi++){
+    mm.push({ id:'mm'+mi, t: new Date(2026, 2+mi, 10, 10, 0).getTime(), k:'c', v:150 });
+  }
+  D.setData(mm, true);
+  D.UI.months = 6;
+  D.renderList();
+  eq('默认只渲染 6 个月', doc.querySelectorAll('.mh[data-month]').length, 6);
+  ok('出现「加载更早」按钮', !!doc.getElementById('btnLoadMore'));
+  doc.getElementById('btnLoadMore').click();
+  eq('点击后 8 个月全出', doc.querySelectorAll('.mh[data-month]').length, 8);
+
+  /* --- 还原真实数据 --- */
+  try{
+    if(savedUI === null) w.localStorage.removeItem('cathlog_ui_v1');
+    else w.localStorage.setItem('cathlog_ui_v1', savedUI);
+  }catch(e){}
   try{
     if(saved === null) w.localStorage.removeItem('cathlog_v1');
     else w.localStorage.setItem('cathlog_v1', saved);

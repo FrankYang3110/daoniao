@@ -220,6 +220,41 @@ public class MainActivity extends Activity {
             return d;
         }
 
+        /** 自动备份用：不弹 toast，不打扰 */
+        @JavascriptInterface
+        public boolean saveBackupQuiet(String fileName, String base64) {
+            try {
+                byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+                File f = new File(backupDir(), fileName);
+                FileOutputStream fos = new FileOutputStream(f);
+                fos.write(bytes);
+                fos.flush();
+                fos.close();
+
+                File[] all = backupDir().listFiles();
+                if (all != null && all.length > 20) {
+                    java.util.Arrays.sort(all, new java.util.Comparator<File>() {
+                        @Override
+                        public int compare(File a, File b) {
+                            return Long.compare(a.lastModified(), b.lastModified());
+                        }
+                    });
+                    for (int i = 0; i < all.length - 20; i++) all[i].delete();
+                }
+
+                /* 再往「下载/导尿记录」写一份，卸载重装也还在 */
+                try {
+                    if (!needStoragePermission()) {
+                        doSaveQuiet(fileName, base64, "application/json");
+                    }
+                } catch (Exception ignored) {
+                }
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
         /**
          * 写入内部备份（不靠存储权限、不会被系统清理）。
          * 同时再往「下载/导尿记录」写一份，方便用户取走。

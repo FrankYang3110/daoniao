@@ -1,0 +1,8 @@
+temp/
+aduan/
+.DS_Store
+Thumbs.db
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
